@@ -2,6 +2,8 @@
 
 A Claude Code plugin that takes one ticket from a tracker to an open GitHub PR in a Turborepo project: design → plan → TDD per task → code review → verify each changed app → commit → security review → draft PR → ticket update. Gate 1 (the plan) is the one planned question: once it is approved, the commit, a security amend, the push and the draft PR run without asking, and you mark the PR ready on GitHub. The run still stops to ask when something leaves the plan (a plan change, the round limit). A saved status lets a stopped run resume at the exact task step.
 
+Docs: [how the workflow runs](../../docs/workflow.md) (flow chart), [project configuration](../../docs/configuration.md), [plugin internals](../../docs/architecture.md).
+
 ## Install
 
 In Claude Code:
