@@ -71,6 +71,22 @@ Every project value lives in one file, `.claude/workflow.json`, committed with t
 | `apps.<name>.screenshot` | Screenshot settings: folder (`{feature}` = the branch name after `<type>/`), format, theme storage key, dev command, URL, cookies to set, a ready check and selectors to remove |
 | `shared` | Paths every app depends on (shared config packages, the workspace file). A change there counts as every app and rebuilds the packages first |
 
+## Copy mode: the lock
+
+A project set up in copy mode has `.claude/turbo-workflow.lock`, committed:
+
+```json
+{
+  "source": "https://github.com/Tiennd0502/claude-turbo-workflow",
+  "version": "0.1.0",
+  "mode": "copy",
+  "tracker": "trello",
+  "files": { ".claude/rules/workflow.md": "<sha256>", "…": "…" }
+}
+```
+
+`/turbo-workflow-sync` reads it: `source` and the release tag `turbo-workflow--v<version>` say what to fetch, and each hash tells a file you have not touched (updated without a question) from one you edited (shown as a diff and asked: take the new version, or keep yours; a kept file stays `edited` next time). `settings.json` and `.mcp.json` are not hashed: their workflow entries are merged again on every sync, and your own keys and hooks stay.
+
 ## Per-app files
 
 Each app keeps its own knowledge next to its code; init creates skeletons only when they are missing:

@@ -35,16 +35,19 @@ They apply once a teammate trusts the project folder (the trust dialog on first 
 
 ## Set up a project
 
-Run `/turbo-workflow:init` in the project. It reads the repo for suggested answers and asks every value (tracker, branches, package manager, apps, shared paths), shows the files it will write, and writes them only after you confirm:
+Run `/turbo-workflow:init` in the project. It first asks the install mode: **copy the workflow into `.claude/`** (default: the project gets `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot`, the agents, scripts, hooks and rules, plus `.claude/turbo-workflow.lock`, and runs without this plugin) or **plugin** (the project keeps only its config). Then it reads the repo for suggested answers and asks every value (tracker, branches, package manager, apps, shared paths), shows the files it will write, and writes them only after you confirm. In both modes it writes:
 
 - `.claude/workflow.json`, the project config ([schema](schema/workflow.schema.json));
 - per app, when missing: `apps/<app>/.claude/rules/coding.md` and `testing.md` (skeletons with TODOs to fill) and `apps/<app>/.claude/skills/verify/SKILL.md` (the app's gates);
 - the tracker's files (for `trello`: `.github/workflows/trello.yml`);
-- the settings keys above, a short block in `CLAUDE.md`, and the specs dir and `.superpowers/` in `.gitignore`.
+- plugin mode: the settings keys above; copy mode: the copied files, the hooks merged into `settings.json` (superpowers on, this plugin off for the project) and the screenshot server in `.mcp.json`;
+- a short block in `CLAUDE.md`, and the specs dir and `.superpowers/` in `.gitignore`.
 
 Run it again to change the setup: it offers the current values.
 
 ## Use
+
+Plugin mode names below; in copy mode drop the `turbo-workflow:` prefix (`/work-ticket`), and `/turbo-workflow-sync` updates the copy.
 
 | Command | What it does |
 | --- | --- |
@@ -58,6 +61,10 @@ Run it again to change the setup: it offers the current values.
 Trackers: `trello` (a board with one list per state: todo, in progress, review, done) and `none` (the ticket is the task you type). Workflow files (design, plan, reports) stay local in the specs dir.
 
 ## Update
+
+Copy mode: `/turbo-workflow-sync [version]` in the project. It fetches the release tag from GitHub, updates the files you did not touch, shows a diff and asks for each file you edited, and updates the lock; then commit.
+
+Plugin mode:
 
 ```text
 claude plugin update turbo-workflow

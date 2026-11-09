@@ -1,10 +1,18 @@
 # Feature workflow (overrides for superpowers)
 
 Notation used below:
+<!-- plugin-only -->
 - `<plugin>` is the turbo-workflow plugin's directory, given in the session context at start; scripts are `node "<plugin>/scripts/<name>.mjs"`, run from the repo root unless a rule says otherwise.
+<!-- /plugin-only -->
+<!-- copy-only:
+- The workflow's scripts are in `.claude/scripts/`; commands name them from the repo root (`$(git rev-parse --show-toplevel)/.claude/scripts/<name>.mjs`), so they work from an app's dir too.
+-->
 - `.claude/workflow.json` is the project's config; `<specsDir>` is its `specsDir`, the base branch is its `git.baseBranch`.
 - `<pm run X>`, `<pm exec X>` and `<build packages>` are the package manager's commands: print them with `node "<plugin>/scripts/config.mjs" cmd run X`, `cmd exec X` and `cmd build-packages`.
-- `/work-ticket` is `/turbo-workflow:work-ticket`; a ticket comes from the tracker adapter named by `tracker.type` (`<plugin>/trackers/<type>/adapter.md`).
+<!-- plugin-only -->
+- `/work-ticket` is `/turbo-workflow:work-ticket`.
+<!-- /plugin-only -->
+- A ticket comes from the tracker adapter named by `tracker.type` (`<plugin>/trackers/<type>/adapter.md`).
 
 For a feature or bug task, use the superpowers skills `brainstorming` → `writing-plans` → `executing-plans` (or `subagent-driven-development` outside `/work-ticket`). They allow user preferences to override their defaults; in a project with turbo-workflow, the rules below override them. After implementing, follow these rules in this order: code review (rule 8), verify of each changed app (rule 7), report (rule 9), commit (rule 11), security review on the commit (rule 8), finishing the branch (rule 10). `/work-ticket` runs the whole flow for one ticket.
 

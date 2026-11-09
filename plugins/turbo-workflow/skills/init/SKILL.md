@@ -1,6 +1,6 @@
 ---
 name: init
-description: Set up turbo-workflow in a Turborepo project — read the repo for suggested answers, ask every project value, show the files it will write, and write them only after the user confirms. Also edits an existing setup. Run only when the user invokes /turbo-workflow:init.
+description: Set up turbo-workflow in a Turborepo project — read the repo for suggested answers, ask every project value, then copy the workflow into .claude/ (default) or use it as a plugin, showing the files it will write and writing them only after the user confirms. Also edits an existing setup. Run only when the user invokes /turbo-workflow:init.
 disable-model-invocation: true
 ---
 
@@ -14,13 +14,15 @@ Run from the repo root. **Nothing is written before step 4's confirmation**, and
 - `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` when `gh` works; a failure is not an error.
 - Read each adapter's `## init` in `${CLAUDE_PLUGIN_ROOT}/trackers/*/adapter.md`.
 - No `turbo.json` at the root → say this plugin is for Turborepo projects and ask whether to go on anyway.
+- `.claude/turbo-workflow.lock` exists → the project was set up in copy mode (its `version` is the copied release).
 
-With an existing `workflow.json`, its values are the recommended answers (this is how a re-run edits the setup); otherwise the detected ones are.
+With an existing `workflow.json`, its values are the recommended answers (this is how a re-run edits the setup); otherwise the detected ones are. With a lock, copy mode is the recommended mode.
 
 ## 2. Ask
 
 AskUserQuestion, at most 4 questions per call, in this order. Every question has the recommended value as option A "(Recommended)"; Other is for anything typed.
 
+0. **Install mode:** A "Copy into `.claude/`" (Recommended; the default): the rules, skills, agents, scripts, templates and hooks are written into the project, the commands are `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot`, the project needs only superpowers, and `/turbo-workflow-sync` updates it. B "Plugin": the project keeps only its config and uses the plugin's commands (`/turbo-workflow:work-ticket` …); `claude plugin update` updates it. On a re-run, A is the current mode.
 1. **Tracker:** `trello` or `none`. Then the questions of that adapter's `## init` (for `trello`: the connector check, the board, one list per state).
 2. **Git:** the remote (A: the current `git.remote`, else `git.remote` from `init-detect`, else `origin`; the other `git.remotes` as options), the one the workflow pushes to and opens PRs on; base branch (A: the current `git.baseBranch`, else the default branch from `gh` or `init-detect`); protected branches (A: the base branch plus `main` if it exists, multiSelect).
 3. **Package manager** (A: `packageManager.value`) and **autofix** (A: `lint-staged` when `lintStaged` is true, else `none`); the specs dir (A: `docs/specs`).
@@ -32,7 +34,7 @@ AskUserQuestion, at most 4 questions per call, in this order. Every question has
    - with UI: screenshot dir (A: `docs/images/{feature}`), format (A: `png`), theme storage key (A: none), dev command (A: detected), URL (A: detected), cookies, ready check and selectors to remove (A: none).
 5. **Shared paths:** every package under `packages/` plus the workspace file (multiSelect, A: all).
 
-Then validate: write the answers as a config object and check it with `node -e` importing `validateConfig` from `${CLAUDE_PLUGIN_ROOT}/scripts/config.mjs`; an error goes back to the matching question.
+Then validate: write the answers as a config object to `<draft>` = `$(mktemp -d)/workflow.json` and check it with `node -e` importing `validateConfig` from `${CLAUDE_PLUGIN_ROOT}/scripts/config.mjs`; an error goes back to the matching question.
 
 ## 3. Plan the files
 
@@ -40,21 +42,23 @@ Then validate: write the answers as a config object and check it with `node -e` 
 | --- | --- |
 | `.claude/workflow.json` | always (`create` or `change`) |
 | `apps/<app>/.claude/rules/coding.md`, `apps/<app>/.claude/rules/testing.md` | only when missing: from `${CLAUDE_PLUGIN_ROOT}/templates/init/coding.md` and `testing.md` |
-| `apps/<app>/.claude/skills/verify/SKILL.md` | only when missing: from `${CLAUDE_PLUGIN_ROOT}/templates/init/verify-SKILL.md`, the `{{…}}` gates filled from the app's real scripts (below) |
+| `apps/<app>/.claude/skills/verify/SKILL.md` | only when missing: from `${CLAUDE_PLUGIN_ROOT}/templates/init/verify-SKILL.md`, the `{{…}}` gates filled from the app's real scripts (below); the filled text then goes through `rewrite` (copy mode) or `forPlugin` (plugin mode), as for `CLAUDE.md` |
 | the tracker's files | from the adapter's `## init` (`create`, or `change` when the content differs) |
-| `.claude/settings.json` | merge only: add `extraKnownMarketplaces["claude-turbo-workflow"]` = `{ "source": { "source": "github", "repo": "Tiennd0502/claude-turbo-workflow" } }` and `enabledPlugins["turbo-workflow@claude-turbo-workflow"]` = `true`; keep every other key |
-| `CLAUDE.md` | add the block of `${CLAUDE_PLUGIN_ROOT}/templates/init/claude-md-block.md` (create the file if missing); skip if the block is already there |
+| `.claude/settings.json` | plugin mode, merge only: add `extraKnownMarketplaces["claude-turbo-workflow"]` = `{ "source": { "source": "github", "repo": "Tiennd0502/claude-turbo-workflow" } }` and `enabledPlugins["turbo-workflow@claude-turbo-workflow"]` = `true`; keep every other key. Copy mode: `vendor.mjs write` merges it (below) |
+| the copied workflow (copy mode) | every path of `node "${CLAUDE_PLUGIN_ROOT}/scripts/vendor.mjs" plan . --config <draft>`, with its status: `new` → `create`, `update` → `change`, `same` → `skip (same)`, `edited` → `edited` (changed in the project since the last copy, or not written by a copy), `dropped` → `dropped` (no longer part of the workflow); plus `.claude/settings.json` (hooks, superpowers on, this plugin off in the project), `.mcp.json` (the screenshot server) and `.claude/turbo-workflow.lock`, each `change` or `create` |
+| `CLAUDE.md` | add the block of `${CLAUDE_PLUGIN_ROOT}/templates/init/claude-md-block.md` (create the file if missing); skip if the block is already there. The block is the template's text through `node -e` importing from `${CLAUDE_PLUGIN_ROOT}/scripts/vendor.mjs`: `rewrite` in copy mode (commands without the `turbo-workflow:` prefix, plus the sync line), `forPlugin` in plugin mode (the copy-only lines dropped) |
 | `.gitignore` | add `<specsDir>/` unless `existing.gitignoreHasSpecs`, and `/.superpowers/` unless `existing.gitignoreHasSuperpowers` (superpowers' plan ledgers, and a PR draft made with no spec dir; step 9 commits with `git add -A`) |
 
 Filling `verify-SKILL.md`: `{{name}}` and `{{dir}}` are the app's, `{{root}}` is the relative path from the app's dir to the repo root (`../..` for `apps/site`, `..` for `site`); the gates come from the app's scripts, run from the app's dir: `{{lint}}` = the `lint` script made read-only: keep its own commands and arguments and make every rewriting step only check: remove `--fix` and `--fix-type …` for ESLint, and replace Prettier's `--write` / `-w` with `--check` (a bare `prettier .` checks nothing and always passes); e.g. `eslint --fix "src/**/*.ts" && prettier --write .` → `<pm exec eslint> "src/**/*.ts" && <pm exec prettier> --check .`. When the script is not a direct tool call (`turbo run lint`, `<pm run lint:all>`) or a flag's meaning is unclear, ask the user for the read-only lint command instead of guessing. `{{formatCheck}}` = `<pm run format:check>` if present, `{{build}}` = `<pm run build>`, `{{test}}` = `<pm run test>`, or the app's coverage command when it has no `test` script (the unit gate is never dropped), `{{e2e}}` = "Run `<pm run test:e2e>` when the change touches what the e2e suite covers." when e2e is on, else "No e2e suite: report E2E as n/a.". A missing lint, format or build script drops its line. Say which lines were dropped.
 
 ## 4. Confirm
 
-Show the file list, each marked `create`, `change` or `skip (exists)`, and the full `workflow.json`. Ask: A "Write these files" (Recommended), B "Change something" (the change in Other; apply it, show the list again and ask again), C "Cancel" (nothing is written).
+Show the file list, each marked `create`, `change`, `skip (exists)`, `skip (same)`, `edited` or `dropped`, and the full `workflow.json`. In copy mode, first ask for each `edited` file (show `vendor.mjs show . <path> --config <draft>` against the project file with `git diff --no-index`): A "Take the new version" (Recommended), B "Keep mine"; and for each `dropped` file: A "Remove" (Recommended), B "Keep". Then ask: A "Write these files" (Recommended), B "Change something" (the change in Other; apply it, show the list again and ask again), C "Cancel" (nothing is written).
 
 ## 5. Write and report
 
-On A, write exactly the listed files. Then report:
+On A, write exactly the listed files. In copy mode, write `.claude/workflow.json` from `<draft>` first, then run `node "${CLAUDE_PLUGIN_ROOT}/scripts/vendor.mjs" write . --take <edited, A>… --keep <edited, B>… --remove <dropped, A>… --keep <dropped, B>…`: it writes the copied files, merges `settings.json` and `.mcp.json`, and writes the lock (it refuses an `edited` file with no answer). Then report:
 - what was written;
-- what is left for the user: fill the `<TODO>`s in each app's `coding.md` and `testing.md`, the tracker's secrets or variables (from its `## init`), commit the files, and start a new session so the SessionStart context loads;
-- how to start: `/turbo-workflow:work-ticket <ticket>`.
+- what is left for the user: fill the `<TODO>`s in each app's `coding.md` and `testing.md`, the tracker's secrets or variables (from its `## init`), commit the files, and start a new session (copy mode: so `.claude/` loads; plugin mode: so the SessionStart context loads);
+- how to start: `/work-ticket <ticket>` (copy mode) or `/turbo-workflow:work-ticket <ticket>` (plugin mode);
+- copy mode: updates come with `/turbo-workflow-sync`; this plugin is off in the project, so to run `/turbo-workflow:init` here again, first `claude plugin enable turbo-workflow@claude-turbo-workflow --scope local` (and `claude plugin disable … --scope local` after).

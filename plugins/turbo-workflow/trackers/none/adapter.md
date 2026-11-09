@@ -25,6 +25,8 @@ Empty: the PR description has no `**Ticket:**` line.
 
 Nothing.
 
+<!-- plugin-only -->
 ## init
 
 No questions and no files.
+<!-- /plugin-only -->

@@ -1,12 +1,12 @@
 # How the workflow runs
 
-`/turbo-workflow:work-ticket <ticket>` takes one ticket from the tracker to a draft GitHub PR. It drives the [superpowers](https://github.com/obra/superpowers) skills (brainstorming, writing-plans, executing-plans) and adds this plugin's own rules on top: reviews, verify per changed app, reports, saved status and tracker moves.
+`/work-ticket <ticket>` takes one ticket from the tracker to a draft GitHub PR (that is the name in a project set up in copy mode; in plugin mode it is `/turbo-workflow:work-ticket`, and the same goes for every command below). It drives the [superpowers](https://github.com/obra/superpowers) skills (brainstorming, writing-plans, executing-plans) and adds this plugin's own rules on top: reviews, verify per changed app, reports, saved status and tracker moves.
 
 ## The flow
 
 ```mermaid
 flowchart TD
-    start(["/turbo-workflow:work-ticket TICKET"]) --> s0{"0. Pre-flight:<br/>a spec for this ticket?"}
+    start(["/work-ticket TICKET"]) --> s0{"0. Pre-flight:<br/>a spec for this ticket?"}
     s0 -- "yes" --> resume["Resume at the first unfinished step<br/>(state.json)"]
     s0 -- "no" --> s1["1. Read the ticket<br/>move: todo → inProgress"]
     s1 --> s2["2. Design (brainstorming)<br/>design.md · you approve it"]
@@ -28,7 +28,7 @@ flowchart TD
     s10 --> s11["11. Push + draft PR"]
     s11 --> s12["12. move: inProgress → review"]
     s12 --> s13(["13. Report + notification"])
-    s13 -. "PR merged on GitHub" .-> done["done-on-merge, or<br/>/turbo-workflow:work-ticket TICKET done<br/>move: review → done · delete the branch"]
+    s13 -. "PR merged on GitHub" .-> done["done-on-merge, or<br/>/work-ticket TICKET done<br/>move: review → done · delete the branch"]
 
     classDef gate fill:#fde68a,stroke:#b45309,color:#111;
     classDef auto fill:#dbeafe,stroke:#1d4ed8,color:#111;
@@ -96,4 +96,4 @@ Verify runs each changed app's own `apps/<app>/.claude/skills/verify/SKILL.md` (
 
 ## Resume
 
-A stopped run continues where it stopped: run `/turbo-workflow:work-ticket <ticket>` (or `<spec dir>`) again. `state.json` records the step, the task and its step, tests passed, review results, findings and rounds. Local git refs under `refs/work-ticket/<feature>/` fingerprint the work, so the resume can tell when files changed while it was away. `/turbo-workflow:ticket-status` shows where a run is without changing anything.
+A stopped run continues where it stopped: run `/work-ticket <ticket>` (or `<spec dir>`) again. `state.json` records the step, the task and its step, tests passed, review results, findings and rounds. Local git refs under `refs/work-ticket/<feature>/` fingerprint the work, so the resume can tell when files changed while it was away. `/ticket-status` shows where a run is without changing anything.

@@ -33,28 +33,46 @@ It needs Claude Code, Node.js ≥ 24, git, `gh` signed in to GitHub, and the `su
 
 ## Quick start
 
-1. In your Turborepo, run `/turbo-workflow:init`. It reads the repo, asks every value (tracker, branches, package manager, apps, shared paths) with the detected one as the recommended answer, shows the files it will write, and writes them only after you confirm.
+1. Install the plugin (above), then in your Turborepo run `/turbo-workflow:init`. It asks the [install mode](#two-install-modes) (copy into `.claude/` by default), then every project value (tracker, branches, package manager, apps, shared paths) with the detected one as the recommended answer, shows the files it will write, and writes them only after you confirm.
 2. Fill the `<TODO>`s in each app's `apps/<app>/.claude/rules/coding.md` and `testing.md`, commit the new files, and start a new session.
-3. Run one ticket:
+3. Run one ticket (copy mode; in plugin mode the commands start with `/turbo-workflow:`):
 
    ```text
-   /turbo-workflow:work-ticket https://trello.com/c/<id>/...
-   /turbo-workflow:work-ticket "Add a GET /health route that returns {ok:true}"   # tracker none
+   /work-ticket https://trello.com/c/<id>/...
+   /work-ticket "Add a GET /health route that returns {ok:true}"   # tracker none
    ```
 
-4. Review the draft PR on GitHub and mark it ready. After the merge, the ticket moves to done (or run `/turbo-workflow:work-ticket <ticket> done`).
+4. Review the draft PR on GitHub and mark it ready. After the merge, the ticket moves to done (or run `/work-ticket <ticket> done`).
+
+## Two install modes
+
+`/turbo-workflow:init` asks first how the project gets the workflow:
+
+| | **Copy into `.claude/`** (default) | **Plugin** |
+| --- | --- | --- |
+| What the project holds | the whole workflow: `.claude/rules/workflow.md`, `skills/`, `agents/`, `scripts/`, `templates/`, `trackers/`, `hooks/`, the hooks in `settings.json`, `.mcp.json`, and `.claude/turbo-workflow.lock` | only the config and the per-app files |
+| Commands | `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot` | `/turbo-workflow:work-ticket`, `/turbo-workflow:ticket-status`, … |
+| Teammates need | the `superpowers` plugin (enabled in `settings.json`) | this plugin and superpowers |
+| claude.ai/code cloud sessions | the copied `.claude/` carries over (superpowers still has to be available there) | repo-declared plugins are not installed |
+| Edit per project | yes, edit the copied files | no |
+| Update | `/turbo-workflow-sync [version]`: fetches the release, updates untouched files, asks for each file you edited | `claude plugin update turbo-workflow` |
+
+In copy mode the plugin is turned off for the project (`enabledPlugins` false), so nothing runs twice. To run `/turbo-workflow:init` there again: `claude plugin enable turbo-workflow@claude-turbo-workflow --scope local`, then disable it after.
 
 ## Commands
 
+Copy mode names; in plugin mode add the `turbo-workflow:` prefix (`/turbo-workflow:work-ticket`).
+
 | Command | What it does |
 | --- | --- |
-| `/turbo-workflow:init` | sets up or edits the project config |
-| `/turbo-workflow:work-ticket <ticket \| "task" \| task.md>` | runs one ticket end to end |
-| `/turbo-workflow:work-ticket <spec dir>` | resumes a stopped run |
-| `/turbo-workflow:work-ticket <ticket> done` | after the merge: ticket to done, local branch deleted |
-| `/turbo-workflow:ticket-status [spec dir]` | where a run stopped, read only |
-| `/turbo-workflow:pr-description` | drafts a PR description for the current branch |
-| `/turbo-workflow:ui-screenshot` | before / after screenshots of a UI change |
+| `/turbo-workflow:init` | sets up or edits the project (always the plugin's command) |
+| `/work-ticket <ticket \| "task" \| task.md>` | runs one ticket end to end |
+| `/work-ticket <spec dir>` | resumes a stopped run |
+| `/work-ticket <ticket> done` | after the merge: ticket to done, local branch deleted |
+| `/ticket-status [spec dir]` | where a run stopped, read only |
+| `/pr-description` | drafts a PR description for the current branch |
+| `/ui-screenshot` | before / after screenshots of a UI change |
+| `/turbo-workflow-sync [version]` | copy mode only: update the copied files to a release |
 
 ## Documentation
 
@@ -65,7 +83,9 @@ It needs Claude Code, Node.js ≥ 24, git, `gh` signed in to GitHub, and the `su
 
 ## Team setup
 
-`/turbo-workflow:init` adds these keys to the project's `.claude/settings.json`. Commit them, and teammates get the plugin after they trust the folder:
+Copy mode: commit the copied `.claude/` (and `.mcp.json`); teammates need only superpowers, which `settings.json` enables.
+
+Plugin mode: `/turbo-workflow:init` adds these keys to the project's `.claude/settings.json`. Commit them, and teammates get the plugin after they trust the folder:
 
 ```json
 {
@@ -80,11 +100,10 @@ To use it in the claude.ai apps too, add this repo under claude.ai → Customize
 
 ## Update
 
-```text
-claude plugin update turbo-workflow
-```
+- Copy mode: `/turbo-workflow-sync` (or `/turbo-workflow-sync 0.1.0`), then review and commit the diff.
+- Plugin mode: `claude plugin update turbo-workflow`, then `/reload-plugins`.
 
-Then `/reload-plugins`. Releases are tagged `turbo-workflow--v<version>`.
+Releases are tagged `turbo-workflow--v<version>`.
 
 ## Develop
 

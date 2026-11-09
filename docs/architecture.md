@@ -8,7 +8,8 @@ plugins/turbo-workflow/
   hooks/                             hooks.json + session-start, block-forbidden-command, notify-on-finish
   skills/                            init, work-ticket (+ workflow.md, the rules), ticket-status, pr-description, ui-screenshot
   agents/                            plan-reviewer, pr-writer, trello-manager, ui-screenshotter
-  scripts/                           config, changed-apps, coverage-diff, ticket-state, init-detect
+  scripts/                           config, changed-apps, coverage-diff, ticket-state, init-detect, vendor
+  copy/skills/turbo-workflow-sync/   the sync skill, written only into copied projects
   trackers/<type>/adapter.md         trello (+ trello.yml template), none
   templates/                         test-report, pr-description, init/ skeletons
   schema/workflow.schema.json        the project config schema
@@ -54,6 +55,7 @@ flowchart TB
 - **`scripts/config.mjs`** is the one reader of `.claude/workflow.json`: it validates it and gives every package-manager command (`cmd run | exec | lockfile | build-packages`). The other scripts use it.
 - **`scripts/ticket-state.mjs`** writes `state.json` (the saved status) and the fingerprint refs `refs/work-ticket/<feature>/`, and prints the status and the next action for a resume.
 - **`scripts/changed-apps.mjs`** maps changed files to apps; **`coverage-diff.mjs`** snapshots and compares coverage.
+- **`scripts/vendor.mjs`** makes the copy-mode project (`plan` / `show` / `write`): a fixed list of plugin files → `.claude/` paths, one rewrite table (`${CLAUDE_PLUGIN_ROOT}/scripts/` → `$(git rev-parse --show-toplevel)/.claude/scripts/`, `turbo-workflow:<name>` → `<name>`, the plugin's MCP tool names → the project's, …), the `<!-- plugin-only -->` / `<!-- copy-only: … -->` markers in the sources, a check that refuses to write when any plugin reference is left, the merge of the hooks into `.claude/settings.json` and of the screenshot server into `.mcp.json`, and the lock with a sha256 per file. `/turbo-workflow:init` and `/turbo-workflow-sync` only call it, so the same release always gives the same files.
 - **`scripts/init-detect.mjs`** reads the repo (package manager, workspaces through `turbo ls`, apps and their scripts, git remotes, existing files) for init's suggested answers. It writes nothing.
 - **Agents.** `plan-reviewer` checks each task's diff against the plan; `pr-writer` fills the PR template from facts only; `trello-manager` does every Trello read and approved move; `ui-screenshotter` takes screenshots through the plugin's MCP server.
 - **Guard hook** (`PreToolUse`) blocks `--no-verify`, force pushes, pushes to `git.protected`, `rm -rf` on root paths, writes to secret files, discarding work, and piping downloads into a shell. Stack-specific rules (database, docker volumes) belong in a project hook.

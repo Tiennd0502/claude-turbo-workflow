@@ -12,7 +12,7 @@ Arguments: `$ARGUMENTS` — a ticket (a tracker URL, a task text in quotes, or a
 **Setup, before anything else.**
 - Read the config: `node "${CLAUDE_PLUGIN_ROOT}/scripts/config.mjs" get tracker.type`, `get specsDir`, `get git.baseBranch`. A missing or invalid config prints one line: show it, tell the user to run `/turbo-workflow:init`, and stop.
 - Read `${CLAUDE_PLUGIN_ROOT}/trackers/<tracker.type>/adapter.md`. Its operations — `parse`, `read`, `move`, `prLine`, done-on-merge — are the only way this skill touches the tracker. The workflow states are `todo`, `inProgress`, `review` and `done`; the adapter maps them to the tracker.
-- The workflow rules are `${CLAUDE_SKILL_DIR}/workflow.md` (`<plugin>` there is `${CLAUDE_PLUGIN_ROOT}`); `<specsDir>` below is the config's `specsDir`.
+- The workflow rules are `${CLAUDE_SKILL_DIR}/workflow.md`<!-- plugin-only --> (`<plugin>` there is `${CLAUDE_PLUGIN_ROOT}`)<!-- /plugin-only --><!-- copy-only: , loaded automatically -->; `<specsDir>` below is the config's `specsDir`.
 
 If the arguments end in `done`, go to `done`. Otherwise start at step 0.
 
