@@ -59,6 +59,8 @@ It needs Claude Code, Node.js ≥ 24, git, `gh` signed in to GitHub, and the `su
 
 In copy mode the plugin is turned off for the project (`enabledPlugins` false), so nothing runs twice. To run `/turbo-workflow:init` there again: `claude plugin enable turbo-workflow@claude-turbo-workflow --scope local`, then disable it after.
 
+On a project that already has its own `.claude/` files at the same paths (for example an older hand-made copy of this workflow), init marks them `unmanaged` and asks for each one (keep yours, or replace it). Switching a copied project to plugin mode removes the copied files you did not change (`vendor.mjs remove`); edited ones are kept and listed.
+
 ## Commands
 
 Copy mode names; in plugin mode add the `turbo-workflow:` prefix (`/turbo-workflow:work-ticket`).

@@ -4,6 +4,7 @@
 //
 //   node <plugin>/scripts/vendor.mjs plan  <root> [--config <file>]
 //   node <plugin>/scripts/vendor.mjs show  <root> <path> [--config <file>]
+//   node <plugin>/scripts/vendor.mjs remove <root> [--remove <path>]… [--dry-run]
 //   node <plugin>/scripts/vendor.mjs write <root> [--config <file>]
 //                                        [--keep <path>]… [--take <path>]…
 //                                        [--remove <path>]…
@@ -20,6 +21,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -77,15 +79,33 @@ const NAMES =
   'work-ticket|ticket-status|pr-description|ui-screenshot|plan-reviewer|pr-writer|trello-manager|ui-screenshotter';
 const ROOT = '(?:\\$\\{CLAUDE_PLUGIN_ROOT\\}|<plugin>)/';
 
+// Text only the copy has. The sources hold just `<!-- copy: <name> -->`, so a
+// session reading them in plugin mode never sees copy-mode instructions.
+export const SNIPPETS = {
+  notation:
+    "- `<repo root>` is the project's absolute path (the session's working directory; `git rev-parse --show-toplevel` prints it): write it out in each command, never as a command substitution, which makes Claude Code ask for permission on every call. The workflow's scripts are `node \"<repo root>/.claude/scripts/<name>.mjs\"`, so they work from any dir.\n" +
+    '- This workflow is copied into `.claude/` (see `.claude/turbo-workflow.lock`) and `/turbo-workflow-sync` updates it. `/turbo-workflow:init` is the plugin\'s setup command, and the plugin is off in this project: run `claude plugin enable turbo-workflow@claude-turbo-workflow --scope local` before it and `claude plugin disable turbo-workflow@claude-turbo-workflow --scope local` after.\n',
+  'rules-autoload': ', loaded automatically',
+  'claude-md':
+    '- The workflow is copied into `.claude/` (see `.claude/turbo-workflow.lock`): update it with `/turbo-workflow-sync`. `/turbo-workflow:init` needs the plugin enabled for this project first: `claude plugin enable turbo-workflow@claude-turbo-workflow --scope local`.\n',
+};
+
+const snippet = (_, name, newline) => {
+  if (!Object.hasOwn(SNIPPETS, name)) throw new Error(`unknown copy snippet: ${name}`);
+  const text = SNIPPETS[name];
+  return text.endsWith('\n') ? text : text + newline;
+};
+
 // Design D2, most specific first.
 const TABLE = [
   [/<!-- plugin-only -->\n[\s\S]*?\n<!-- \/plugin-only -->\n/g, ''],
   [/<!-- plugin-only -->[\s\S]*?<!-- \/plugin-only -->/g, ''],
-  [/<!-- copy-only:\n([\s\S]*?)\n-->\n/g, '$1\n'],
-  [/<!-- copy-only: ([\s\S]*?) -->/g, '$1'],
+  [/<!-- copy: ([\w-]+) -->(\n?)/g, snippet],
   [new RegExp(`${ROOT}skills/work-ticket/workflow\\.md`, 'g'), '.claude/rules/workflow.md'],
   [/\$\{CLAUDE_SKILL_DIR\}\/workflow\.md/g, '.claude/rules/workflow.md'],
-  [new RegExp(`${ROOT}scripts/`, 'g'), '$(git rev-parse --show-toplevel)/.claude/scripts/'],
+  // Commands may run from an app's dir and in subagents, so a script path is
+  // absolute: `<repo root>` is written out, never `$(...)` (SNIPPETS.notation).
+  [new RegExp(`${ROOT}scripts/`, 'g'), '<repo root>/.claude/scripts/'],
   [new RegExp(`${ROOT}(templates|trackers|skills|agents)/`, 'g'), '.claude/$1/'],
   [new RegExp(`/turbo-workflow:(${NAMES})\\b`, 'g'), '/$1'],
   [new RegExp(`\\bturbo-workflow:(${NAMES})\\b`, 'g'), '$1'],
@@ -96,18 +116,18 @@ export function rewrite(text) {
   return TABLE.reduce((out, [pattern, to]) => out.replace(pattern, to), text);
 }
 
-// The same template text for plugin mode: copy-only blocks dropped, the
+// The same template text for plugin mode: copy markers dropped, the
 // plugin-only markers removed (their text kept).
 export function forPlugin(text) {
   return text
-    .replace(/<!-- copy-only:\n[\s\S]*?\n-->\n/g, '')
-    .replace(/<!-- copy-only: [\s\S]*? -->/g, '')
+    .replace(/^<!-- copy: [\w-]+ -->\n/gm, '')
+    .replace(/<!-- copy: [\w-]+ -->/g, '')
     .replace(/^<!-- \/?plugin-only -->\n/gm, '')
     .replace(/<!-- \/?plugin-only -->/g, '');
 }
 
 const LEFTOVER = new RegExp(
-  `\\$\\{CLAUDE_PLUGIN_ROOT\\}|\\$\\{CLAUDE_SKILL_DIR\\}|<plugin>|mcp__plugin_turbo-workflow|turbo-workflow:(?:${NAMES})\\b|plugin-only|copy-only`,
+  `\\$\\{CLAUDE_PLUGIN_ROOT\\}|\\$\\{CLAUDE_SKILL_DIR\\}|<plugin>|mcp__plugin_turbo-workflow|turbo-workflow:(?:${NAMES})\\b|plugin-only|copy-only|<!-- copy:`,
   'g',
 );
 
@@ -117,6 +137,29 @@ export function leftovers(text) {
 }
 
 const sha = (text) => createHash('sha256').update(text).digest('hex');
+const isFile = (path) => {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+};
+// Git may check text files out with CRLF; compare and hash with LF.
+const lf = (text) => text.replace(/\r\n/g, '\n');
+
+// A lock is a committed project file, so its paths are checked before any
+// is read or deleted: relative, under .claude/, no `..`.
+const SAFE_PATH = /^\.claude\/(?:[\w.-]+\/)*[\w.-]+$/;
+function lockFiles(lock) {
+  const files = lock?.files;
+  if (!files || typeof files !== 'object' || Array.isArray(files)) return null;
+  for (const path of Object.keys(files)) {
+    if (!SAFE_PATH.test(path) || path.split('/').includes('..')) {
+      throw new Error(`${LOCK}: invalid path in the lock: ${path}`);
+    }
+  }
+  return files;
+}
 
 function readLock(root) {
   try {
@@ -128,20 +171,23 @@ function readLock(root) {
 
 // Every copied file with its new content and its status against the project
 // and the lock: `same` (already the new content), `update` (untouched since
-// the last copy), `edited` (changed by the user, or never copied), `new` (no
-// file), and `dropped` (in the lock, no longer copied; content null).
+// the last copy), `edited` (changed by the user since the last copy),
+// `unmanaged` (a project file the copy never wrote, at the same path), `new`
+// (no file), and `dropped` (in the lock, no longer copied; content null;
+// `edited` tells whether the user changed it).
 export function planCopy(root, config, { pluginDir = PLUGIN_DIR } = {}) {
-  const locked = readLock(root)?.files ?? {};
+  const locked = lockFiles(readLock(root)) ?? {};
   const bad = [];
   const files = copyList(config).map(({ from, to }) => {
-    const content = rewrite(readFileSync(join(pluginDir, from), 'utf8'));
+    const content = rewrite(lf(readFileSync(join(pluginDir, from), 'utf8')));
     const left = leftovers(content);
     if (left.length) bad.push(`${from}: ${left.join(', ')}`);
     const target = join(root, to);
-    const current = existsSync(target) ? readFileSync(target, 'utf8') : null;
+    const current = existsSync(target) ? lf(readFileSync(target, 'utf8')) : null;
     let status = 'edited';
     if (current === null) status = 'new';
     else if (current === content) status = 'same';
+    else if (!locked[to]) status = 'unmanaged';
     else if (locked[to] === sha(current)) status = 'update';
     return { path: to, status, content };
   });
@@ -150,8 +196,13 @@ export function planCopy(root, config, { pluginDir = PLUGIN_DIR } = {}) {
   }
   const listed = new Set(files.map((file) => file.path));
   const dropped = Object.keys(locked)
-    .filter((path) => !listed.has(path) && existsSync(join(root, path)))
-    .map((path) => ({ path, status: 'dropped', content: null }));
+    .filter((path) => !listed.has(path) && isFile(join(root, path)))
+    .map((path) => ({
+      path,
+      status: 'dropped',
+      content: null,
+      edited: locked[path] !== sha(lf(readFileSync(join(root, path), 'utf8'))),
+    }));
   return [...files, ...dropped];
 }
 
@@ -221,9 +272,11 @@ function pluginVersion(pluginDir) {
   ).version;
 }
 
-// `keep`: edited or dropped files to leave as they are; `take`: edited files
-// to replace with the new version; `remove`: dropped files to delete. An
-// edited file in neither `keep` nor `take` stops the write.
+// `keep`: edited, unmanaged or dropped files to leave as they are; `take`:
+// edited or unmanaged files to replace with the new version; `remove`:
+// dropped files to delete. An edited or unmanaged file in neither `keep` nor
+// `take` stops the write. Everything that can fail (sources, JSON, the
+// version) is read before the first write.
 export function writeCopy(
   root,
   config,
@@ -231,14 +284,18 @@ export function writeCopy(
 ) {
   const files = planCopy(root, config, { pluginDir });
   const open = files.filter(
-    (f) => f.status === 'edited' && !keep.includes(f.path) && !take.includes(f.path),
+    (f) =>
+      ['edited', 'unmanaged'].includes(f.status) &&
+      !keep.includes(f.path) &&
+      !take.includes(f.path),
   );
   if (open.length) {
     throw new Error(
-      `edited files need --keep or --take: ${open.map((f) => f.path).join(', ')}`,
+      `edited or unmanaged files need --keep or --take: ${open.map((f) => f.path).join(', ')}`,
     );
   }
-  const old = readLock(root)?.files ?? {};
+  const version = pluginVersion(pluginDir);
+  const old = lockFiles(readLock(root)) ?? {};
   const settingsPath = join(root, '.claude', 'settings.json');
   const settings = mergeSettings(readJson(settingsPath), { pluginDir });
   const mcpPath = join(root, '.mcp.json');
@@ -254,7 +311,7 @@ export function writeCopy(
       } else if (old[path]) hashes[path] = old[path];
       continue;
     }
-    if (status === 'edited' && keep.includes(path)) {
+    if (['edited', 'unmanaged'].includes(status) && keep.includes(path)) {
       if (old[path]) hashes[path] = old[path];
       continue;
     }
@@ -266,7 +323,7 @@ export function writeCopy(
   }
   const lock = {
     source: SOURCE,
-    version: pluginVersion(pluginDir),
+    version,
     mode: 'copy',
     tracker: config.tracker.type,
     files: Object.fromEntries(Object.entries(hashes).sort()),
@@ -277,11 +334,90 @@ export function writeCopy(
   return { written: [...written, '.claude/settings.json', '.mcp.json'], removed };
 }
 
+// Undo a copy (switching the project to plugin mode): delete every file in
+// the lock that is unchanged since the copy (or named in `remove`), take the
+// copied hooks out of settings.json, the screenshot server out of .mcp.json,
+// and the copy's `enabledPlugins` false, and delete the lock. Edited files
+// are kept and reported. Everything is read before the first change;
+// `dryRun` only reports.
+export function removeCopy(
+  root,
+  { remove = [], pluginDir = PLUGIN_DIR, dryRun = false } = {},
+) {
+  const lock = readLock(root);
+  if (!lockFiles(lock)) {
+    throw new Error(`${LOCK}: missing or invalid, so this project is not a copy`);
+  }
+  const unknown = remove.filter((path) => !Object.hasOwn(lock.files, path));
+  if (unknown.length) throw new Error(`not in the lock: ${unknown.join(', ')}`);
+  const settingsPath = join(root, '.claude', 'settings.json');
+  const settings = readJson(settingsPath);
+  const mcpPath = join(root, '.mcp.json');
+  const mcp = readJson(mcpPath);
+  const servers = Object.keys(readJson(join(pluginDir, '.mcp.json')).mcpServers);
+  const plan = Object.entries(lock.files)
+    .filter(([path]) => isFile(join(root, path)))
+    .map(([path, hash]) => ({
+      path,
+      drop: remove.includes(path) || sha(lf(readFileSync(join(root, path), 'utf8'))) === hash,
+    }));
+  if (settings) {
+    for (const [event, groups] of Object.entries(settings.hooks ?? {})) {
+      const left = groups
+        .map((g) => ({ ...g, hooks: (g.hooks ?? []).filter((h) => !isOurHook(h.command)) }))
+        .filter((g) => g.hooks.length);
+      if (left.length) settings.hooks[event] = left;
+      else delete settings.hooks[event];
+    }
+    if (settings.hooks && !Object.keys(settings.hooks).length) delete settings.hooks;
+    if (settings.enabledPlugins?.['turbo-workflow@claude-turbo-workflow'] === false) {
+      delete settings.enabledPlugins['turbo-workflow@claude-turbo-workflow'];
+    }
+  }
+  if (mcp?.mcpServers) for (const name of servers) delete mcp.mcpServers[name];
+  const removed = plan.filter((f) => f.drop).map((f) => f.path);
+  const kept = plan.filter((f) => !f.drop).map((f) => f.path);
+  if (dryRun) return { removed, kept };
+  for (const { path, drop } of plan) {
+    if (drop) rmSync(join(root, path));
+  }
+  if (settings) {
+    if (settings.enabledPlugins && !Object.keys(settings.enabledPlugins).length) {
+      delete settings.enabledPlugins;
+    }
+    writeJson(settingsPath, settings);
+  }
+  if (mcp) {
+    const empty =
+      !Object.keys(mcp.mcpServers ?? {}).length &&
+      Object.keys(mcp).every((key) => key === 'mcpServers');
+    if (empty) rmSync(mcpPath);
+    else writeJson(mcpPath, mcp);
+  }
+  rmSync(join(root, LOCK));
+  return { removed, kept };
+}
+
 function parseArgs(argv) {
   const [command, root, ...rest] = argv;
-  const opts = { command, root, path: null, config: null, keep: [], take: [], remove: [] };
+  const opts = { command, root, path: null, config: null, keep: [], take: [], remove: [], dryRun: false };
   if (command === 'show') opts.path = rest.shift();
+  const allowed = {
+    plan: ['--config'],
+    show: ['--config'],
+    write: ['--config', '--keep', '--take', '--remove'],
+    remove: ['--remove', '--dry-run'],
+  }[command] ?? [];
+  const dry = rest.indexOf('--dry-run');
+  if (dry !== -1) {
+    if (!allowed.includes('--dry-run')) throw new Error(`--dry-run: only for remove`);
+    opts.dryRun = true;
+    rest.splice(dry, 1);
+  }
   for (let i = 0; i < rest.length; i += 2) {
+    if (!allowed.includes(rest[i])) {
+      throw new Error(`${rest[i]}: not an option of ${command}`);
+    }
     const [flag, value] = [rest[i], rest[i + 1]];
     if (value === undefined) throw new Error(`${flag}: missing value`);
     if (flag === '--config') opts.config = value;
@@ -295,11 +431,15 @@ function parseArgs(argv) {
 
 function main(argv) {
   const opts = parseArgs(argv);
-  if (!['plan', 'show', 'write'].includes(opts.command) || !opts.root) {
+  if (!['plan', 'show', 'write', 'remove'].includes(opts.command) || !opts.root) {
     process.stderr.write(
-      'Usage: vendor.mjs plan|show|write <root> [<path>] [--config <file>] [--keep <path>]… [--take <path>]… [--remove <path>]…\n',
+      'Usage: vendor.mjs plan|show|write|remove <root> [<path>] [--config <file>] [--keep <path>]… [--take <path>]… [--remove <path>]…\n',
     );
     return 1;
+  }
+  if (opts.command === 'remove') {
+    process.stdout.write(`${JSON.stringify(removeCopy(opts.root, opts), null, 2)}\n`);
+    return 0;
   }
   const config = JSON.parse(
     readFileSync(opts.config ?? join(opts.root, '.claude', 'workflow.json'), 'utf8'),
@@ -313,7 +453,11 @@ function main(argv) {
   if (opts.command === 'plan') {
     const files = planCopy(opts.root, config);
     process.stdout.write(
-      `${JSON.stringify(files.map(({ path, status }) => ({ path, status })), null, 2)}\n`,
+      `${JSON.stringify(
+        files.map(({ path, status, edited }) => ({ path, status, ...(edited === undefined ? {} : { edited }) })),
+        null,
+        2,
+      )}\n`,
     );
     return 0;
   }

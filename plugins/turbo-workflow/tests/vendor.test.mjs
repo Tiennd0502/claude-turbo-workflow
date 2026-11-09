@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import {
   appendFileSync,
   cpSync,
+  mkdirSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -20,11 +21,13 @@ import { test } from 'node:test';
 
 import {
   PLUGIN_DIR,
+  SNIPPETS,
   SOURCE,
   copyList,
   forPlugin,
   leftovers,
   planCopy,
+  removeCopy,
   rewrite,
   writeCopy,
 } from '../scripts/vendor.mjs';
@@ -76,11 +79,11 @@ test('rewrites every plugin reference', () => {
   const cases = [
     [
       'node "${CLAUDE_PLUGIN_ROOT}/scripts/config.mjs" get x',
-      'node "$(git rev-parse --show-toplevel)/.claude/scripts/config.mjs" get x',
+      'node "<repo root>/.claude/scripts/config.mjs" get x',
     ],
     [
       'node "<plugin>/scripts/coverage-diff.mjs" diff',
-      'node "$(git rev-parse --show-toplevel)/.claude/scripts/coverage-diff.mjs" diff',
+      'node "<repo root>/.claude/scripts/coverage-diff.mjs" diff',
     ],
     [
       '`${CLAUDE_PLUGIN_ROOT}/templates/pr-description.md`',
@@ -117,11 +120,8 @@ test('rewrites every plugin reference', () => {
       'a\nb\n',
     ],
     ['x<!-- plugin-only --> (`<plugin>`)<!-- /plugin-only -->; y', 'x; y'],
-    [
-      'a\n<!-- copy-only:\n- Scripts are in `.claude/scripts/`.\n-->\nb\n',
-      'a\n- Scripts are in `.claude/scripts/`.\nb\n',
-    ],
-    ['x<!-- copy-only: (loaded automatically) --> y', 'x(loaded automatically) y'],
+    ['a\n<!-- copy: notation -->\nb\n', `a\n${SNIPPETS.notation}b\n`],
+    ['x<!-- copy: rules-autoload --> y', `x${SNIPPETS['rules-autoload']} y`],
   ];
   for (const [input, output] of cases) assert.equal(rewrite(input), output, input);
 });
@@ -368,7 +368,208 @@ test('show prints the new content of one copied file', () => {
 
 test('forPlugin drops copy-only blocks and keeps plugin-only text', () => {
   assert.equal(
-    forPlugin('a\n<!-- copy-only:\n- copied\n-->\nb<!-- plugin-only --> (p)<!-- /plugin-only -->\n<!-- copy-only: x -->c\n'),
+    forPlugin('a\n<!-- copy: notation -->\nb<!-- plugin-only --> (p)<!-- /plugin-only -->\n<!-- copy: rules-autoload -->c\n'),
     'a\nb (p)\nc\n',
   );
+});
+
+test('the copy-only text is not in the plugin sources', () => {
+  for (const { from } of copyList(trelloConfig())) {
+    const text = readFileSync(join(PLUGIN_DIR, from), 'utf8');
+    assert.doesNotMatch(text, /\.claude\/scripts\//, from);
+  }
+  for (const text of Object.values(SNIPPETS)) {
+    assert.match(text, /\S/);
+    assert.deepEqual(leftovers(text), []);
+  }
+  assert.match(SNIPPETS.notation, /claude plugin enable turbo-workflow@claude-turbo-workflow --scope local/);
+  assert.doesNotMatch(SNIPPETS.notation, /\$\(/);
+});
+
+test('no command substitution in the copy', () => {
+  for (const { from } of copyList(trelloConfig())) {
+    const text = rewrite(readFileSync(join(PLUGIN_DIR, from), 'utf8'));
+    assert.doesNotMatch(text, /\$\(git rev-parse/, from);
+  }
+});
+
+test('a file the copy did not write is unmanaged', () => {
+  const root = gitProject();
+  mkdirSync(join(root, '.claude', 'agents'), { recursive: true });
+  writeFileSync(join(root, '.claude', 'agents', 'plan-reviewer.md'), 'my own agent\n');
+  const status = Object.fromEntries(
+    planCopy(root, validConfig()).map((f) => [f.path, f.status]),
+  );
+  assert.equal(status['.claude/agents/plan-reviewer.md'], 'unmanaged');
+  assert.throws(() => writeCopy(root, validConfig()), /plan-reviewer\.md/);
+  writeCopy(root, validConfig(), { keep: ['.claude/agents/plan-reviewer.md'] });
+  assert.equal(
+    readFileSync(join(root, '.claude', 'agents', 'plan-reviewer.md'), 'utf8'),
+    'my own agent\n',
+  );
+});
+
+test('a dropped file that was edited is flagged', () => {
+  const { root, pluginDir } = driftedProject();
+  appendFileSync(join(root, '.claude', 'agents', 'trello-manager.md'), '\nMine too.\n');
+  const files = planCopy(root, validConfig(), { pluginDir });
+  const manager = files.find((f) => f.path === '.claude/agents/trello-manager.md');
+  assert.equal(manager.status, 'dropped');
+  assert.equal(manager.edited, true);
+  const adapter = files.find((f) => f.path === '.claude/trackers/trello/adapter.md');
+  assert.equal(adapter.edited, false);
+});
+
+test('line endings changed by git do not count as edits', () => {
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  const path = join(root, '.claude', 'rules', 'workflow.md');
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+  const status = Object.fromEntries(
+    planCopy(root, validConfig()).map((f) => [f.path, f.status]),
+  );
+  assert.equal(status['.claude/rules/workflow.md'], 'same');
+});
+
+test('a bad plugin.json stops the write before any file', () => {
+  const pluginDir = pluginCopy();
+  writeFileSync(join(pluginDir, '.claude-plugin', 'plugin.json'), '{');
+  const root = gitProject();
+  assert.throws(() => writeCopy(root, validConfig(), { pluginDir }));
+  assert.ok(!existsSync(join(root, '.claude', 'rules')));
+});
+
+test('remove undoes the copy', () => {
+  const root = gitProject();
+  writeFileSync(
+    join(root, '.claude', 'settings.json'),
+    JSON.stringify({ permissions: { allow: ['x'] } }),
+  );
+  writeCopy(root, validConfig());
+  appendFileSync(join(root, SKILL), '\nMine.\n');
+  const result = removeCopy(root);
+  assert.deepEqual(result.kept, [SKILL]);
+  assert.ok(existsSync(join(root, SKILL)));
+  assert.ok(!existsSync(join(root, '.claude', 'rules', 'workflow.md')));
+  assert.ok(!existsSync(join(root, LOCK)));
+  const settings = JSON.parse(readFileSync(join(root, '.claude', 'settings.json'), 'utf8'));
+  assert.deepEqual(settings.permissions, { allow: ['x'] });
+  assert.ok(!JSON.stringify(settings.hooks ?? {}).includes('.claude/hooks/'));
+  assert.equal(settings.enabledPlugins?.['turbo-workflow@claude-turbo-workflow'], undefined);
+  assert.throws(() => removeCopy(root), /missing/);
+});
+
+test('remove deletes an edited file only when named, and rejects unknown paths', () => {
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  appendFileSync(join(root, SKILL), '\nMine.\n');
+  assert.throws(() => removeCopy(root, { remove: ['.claude/nope.md'] }), /not in the lock/);
+  assert.ok(existsSync(join(root, LOCK)));
+  removeCopy(root, { remove: [SKILL] });
+  assert.ok(!existsSync(join(root, SKILL)));
+});
+
+test('remove takes out an older copied screenshot server, and only the copy plugin key', () => {
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  const mcpPath = join(root, '.mcp.json');
+  const mcp = JSON.parse(readFileSync(mcpPath, 'utf8'));
+  mcp.mcpServers['playwright-screenshot'].args[1] = '@playwright/mcp@0.0.1';
+  writeFileSync(mcpPath, JSON.stringify(mcp));
+  const settingsPath = join(root, '.claude', 'settings.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.enabledPlugins['turbo-workflow@claude-turbo-workflow'] = true;
+  writeFileSync(settingsPath, JSON.stringify(settings));
+  removeCopy(root);
+  assert.ok(!existsSync(mcpPath)); // its only server was the copy's, so the file goes
+  assert.equal(
+    JSON.parse(readFileSync(settingsPath, 'utf8')).enabledPlugins['turbo-workflow@claude-turbo-workflow'],
+    true,
+  );
+});
+
+test('CRLF plugin sources give the same copy', () => {
+  const pluginDir = pluginCopy();
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  for (const { from } of copyList(validConfig())) {
+    const path = join(pluginDir, from);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+  }
+  const statuses = planCopy(root, validConfig(), { pluginDir }).map((f) => f.status);
+  assert.deepEqual([...new Set(statuses)], ['same']);
+});
+
+test('the old copy-only marker is a leftover', () => {
+  assert.deepEqual(leftovers('<!-- copy-only: x -->'), ['copy-only']);
+});
+
+test('a dropped lock path that is not a file is skipped', () => {
+  const root = gitProject(trelloConfig());
+  writeCopy(root, trelloConfig());
+  const agent = join(root, '.claude', 'agents', 'trello-manager.md');
+  rmSync(agent);
+  mkdirSync(agent);
+  const files = planCopy(root, validConfig());
+  assert.ok(!files.some((f) => f.path === '.claude/agents/trello-manager.md'));
+});
+
+test('remove dry run lists what it would do and changes nothing', () => {
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  appendFileSync(join(root, SKILL), '\nMine.\n');
+  const before = tree(join(root, '.claude'));
+  const result = removeCopy(root, { dryRun: true });
+  assert.deepEqual(result.kept, [SKILL]);
+  assert.ok(result.removed.includes('.claude/rules/workflow.md'));
+  assert.deepEqual(tree(join(root, '.claude')), before);
+});
+
+test('a lock without files is not a copy', () => {
+  const root = gitProject();
+  writeFileSync(join(root, LOCK), '{}');
+  assert.throws(() => removeCopy(root), /not a copy/);
+});
+
+test('remove deletes an .mcp.json it leaves empty', () => {
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  removeCopy(root);
+  assert.ok(!existsSync(join(root, '.mcp.json')));
+  const other = gitProject();
+  writeFileSync(join(other, '.mcp.json'), JSON.stringify({ mcpServers: { x: { command: 'x' } } }));
+  writeCopy(other, validConfig());
+  removeCopy(other);
+  assert.deepEqual(JSON.parse(readFileSync(join(other, '.mcp.json'), 'utf8')), {
+    mcpServers: { x: { command: 'x' } },
+  });
+});
+
+test('lock paths outside .claude/ are refused', () => {
+  const root = gitProject();
+  writeCopy(root, validConfig());
+  const lock = lockOf(root);
+  for (const bad of ['../outside.txt', '.claude/../package.json', '/etc/hosts', 'README.md']) {
+    writeFileSync(join(root, LOCK), JSON.stringify({ ...lock, files: { ...lock.files, [bad]: 'x' } }));
+    assert.throws(() => removeCopy(root, { remove: [bad] }), /invalid path/, bad);
+    assert.throws(() => planCopy(root, validConfig()), /invalid path/, bad);
+  }
+  writeFileSync(join(root, LOCK), JSON.stringify({ ...lock, files: ['abc'] }));
+  assert.throws(() => removeCopy(root), /not a copy/);
+});
+
+test('flags that do not apply to the command are errors', () => {
+  const root = gitProject();
+  const run = (...args) =>
+    spawnSync('node', [join(PLUGIN_DIR, 'scripts', 'vendor.mjs'), ...args], {
+      encoding: 'utf8',
+    });
+  const write = run('write', root, '--dry-run');
+  assert.equal(write.status, 1);
+  assert.match(write.stderr, /--dry-run.*remove/);
+  assert.ok(!existsSync(join(root, '.claude', 'rules')));
+  writeCopy(root, validConfig());
+  const remove = run('remove', root, '--keep', '.claude/rules/workflow.md');
+  assert.equal(remove.status, 1);
+  assert.ok(existsSync(join(root, LOCK)));
 });

@@ -4,9 +4,7 @@ Notation used below:
 <!-- plugin-only -->
 - `<plugin>` is the turbo-workflow plugin's directory, given in the session context at start; scripts are `node "<plugin>/scripts/<name>.mjs"`, run from the repo root unless a rule says otherwise.
 <!-- /plugin-only -->
-<!-- copy-only:
-- The workflow's scripts are in `.claude/scripts/`; commands name them from the repo root (`$(git rev-parse --show-toplevel)/.claude/scripts/<name>.mjs`), so they work from an app's dir too.
--->
+<!-- copy: notation -->
 - `.claude/workflow.json` is the project's config; `<specsDir>` is its `specsDir`, the base branch is its `git.baseBranch`.
 - `<pm run X>`, `<pm exec X>` and `<build packages>` are the package manager's commands: print them with `node "<plugin>/scripts/config.mjs" cmd run X`, `cmd exec X` and `cmd build-packages`.
 <!-- plugin-only -->
