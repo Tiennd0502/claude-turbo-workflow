@@ -1,0 +1,65 @@
+name: Trello
+
+on:
+  pull_request:
+    branches: [__PR_TARGET__]
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  move-to-done:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Move card to DONE
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          TRELLO_DONE_LIST_ID: ${{ vars.TRELLO_DONE_LIST_ID }}
+        run: |
+          set -euo pipefail
+
+          # The card comes only from the PR template's "**Ticket:** <card URL>" line.
+          line=$(printf '%s\n' "${PR_BODY:-}" | tr -d '\r' | grep -m1 '^\*\*Ticket:\*\*' || true)
+          card=$(printf '%s\n' "$line" | grep -oE 'trello\.com/c/[A-Za-z0-9]{8}' | head -n1 | cut -d/ -f3 || true)
+          if [ -z "$card" ]; then
+            echo "::notice::no Trello card on the **Ticket:** line"
+            exit 0
+          fi
+
+          missing=0
+          for name in TRELLO_KEY TRELLO_TOKEN TRELLO_DONE_LIST_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not set"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+
+          auth="Authorization: OAuth oauth_consumer_key=\"$TRELLO_KEY\", oauth_token=\"$TRELLO_TOKEN\""
+          api="https://api.trello.com/1/cards/$card"
+
+          trello() { curl -sS --fail-with-body --max-time 30 --retry 2 -H "$auth" "$@"; }
+
+          if ! body=$(trello "$api?fields=idList"); then
+            echo "::error::Trello GET card $card failed: $body (a 401 means TRELLO_TOKEN expired or is wrong)"
+            exit 1
+          fi
+          list=$(printf '%s' "$body" | sed -n 's/.*"idList":"\([^"]*\)".*/\1/p')
+          if [ -z "$list" ]; then
+            echo "::error::could not read the list of card $card"
+            exit 1
+          fi
+          if [ "$list" = "$TRELLO_DONE_LIST_ID" ]; then
+            echo "::notice::card $card is already in DONE"
+            exit 0
+          fi
+
+          if ! body=$(trello -X PUT "$api?idList=$TRELLO_DONE_LIST_ID"); then
+            echo "::error::Trello PUT card $card failed: $body"
+            exit 1
+          fi
+          echo "::notice::moved $card to DONE"

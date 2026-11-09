@@ -1,0 +1,9 @@
+{
+  "name": "@fixture/shared",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  }
+}

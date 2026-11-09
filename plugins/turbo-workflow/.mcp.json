@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "playwright-screenshot": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.83",
+        "--viewport-size",
+        "1280x800",
+        "--user-data-dir",
+        ".git/ui-screenshot/browser",
+        "--output-dir",
+        ".git/ui-screenshot/raw"
+      ]
+    }
+  }
+}

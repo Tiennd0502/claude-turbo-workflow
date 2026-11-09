@@ -1,0 +1,13 @@
+{
+  "name": "npm-fixture",
+  "private": true,
+  "workspaces": [
+    "./apps/*",
+    "packages/*/",
+    "libs/*",
+    "services/*"
+  ],
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}

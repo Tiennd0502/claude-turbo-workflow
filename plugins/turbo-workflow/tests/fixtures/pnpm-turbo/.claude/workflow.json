@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "packageManager": "pnpm",
+  "git": { "remote": "origin", "baseBranch": "main", "protected": ["main"] },
+  "tracker": { "type": "none" },
+  "autofix": "none",
+  "specsDir": "docs/specs",
+  "apps": {
+    "web": {
+      "dir": "apps/web",
+      "runner": "Vitest",
+      "coverage": "pnpm run test:cov --coverage.reporter=json-summary --coverage.reporter=text-summary",
+      "e2e": false,
+      "planChanges": [],
+      "security": [],
+      "ui": ["src/**"]
+    }
+  },
+  "shared": ["pnpm-workspace.yaml"]
+}

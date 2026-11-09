@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Tiennd0502/claude-turbo-workflow/plugins/turbo-workflow/schema/workflow.schema.json",
+  "title": "turbo-workflow project config (.claude/workflow.json)",
+  "description": "Editor help only: scripts/config.mjs is the validator the plugin uses.",
+  "type": "object",
+  "required": [
+    "version",
+    "packageManager",
+    "git",
+    "tracker",
+    "autofix",
+    "specsDir",
+    "apps",
+    "shared"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "packageManager": { "enum": ["pnpm", "npm", "yarn", "bun"] },
+    "git": {
+      "type": "object",
+      "required": ["remote", "baseBranch", "protected"],
+      "properties": {
+        "remote": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The GitHub remote PRs go to."
+        },
+        "baseBranch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Feature branches start from and PR into this branch."
+        },
+        "protected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Branches the guard hook will not let Claude push to."
+        }
+      }
+    },
+    "tracker": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["trello", "none"] },
+        "board": { "type": "string", "description": "trello: the board URL." },
+        "lists": {
+          "type": "object",
+          "description": "trello: the list for each workflow state.",
+          "required": ["todo", "inProgress", "review", "done"],
+          "properties": {
+            "todo": { "type": "string" },
+            "inProgress": { "type": "string" },
+            "review": { "type": "string" },
+            "done": { "type": "string" }
+          }
+        }
+      },
+      "if": { "properties": { "type": { "const": "trello" } } },
+      "then": { "required": ["board", "lists"] }
+    },
+    "autofix": { "enum": ["lint-staged", "none"] },
+    "specsDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where designs, plans and reports go (keep it gitignored)."
+    },
+    "apps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "dir",
+          "runner",
+          "coverage",
+          "e2e",
+          "planChanges",
+          "security",
+          "ui"
+        ],
+        "properties": {
+          "dir": { "type": "string", "minLength": 1 },
+          "runner": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Test runner name, e.g. Vitest or Jest."
+          },
+          "coverage": {
+            "type": "string",
+            "minLength": 1,
+            "description": "test:cov with a json-summary and a text-summary reporter."
+          },
+          "e2e": { "type": "boolean" },
+          "planChanges": { "type": "array", "items": { "type": "string" } },
+          "security": { "type": "array", "items": { "type": "string" } },
+          "ui": { "type": "array", "items": { "type": "string" } },
+          "screenshot": {
+            "type": "object",
+            "required": ["dir", "format"],
+            "properties": {
+              "dir": {
+                "type": "string",
+                "description": "{feature} = the branch name after <type>/."
+              },
+              "format": { "enum": ["png", "jpeg"] },
+              "themeStorageKey": { "type": "string" },
+              "devCommand": { "type": "string" },
+              "url": { "type": "string" },
+              "cookies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "value"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "value": { "type": "string" }
+                  }
+                }
+              },
+              "readyCheck": {
+                "type": "object",
+                "properties": {
+                  "absentSelector": { "type": "string" },
+                  "settleMs": { "type": "integer", "minimum": 0 }
+                }
+              },
+              "removeSelectors": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "shared": { "type": "array", "items": { "type": "string" } }
+  }
+}

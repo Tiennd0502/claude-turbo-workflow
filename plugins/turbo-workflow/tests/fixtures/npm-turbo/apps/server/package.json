@@ -1,0 +1,16 @@
+{
+  "name": "server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "build": "node -e \"process.exit(0)\"",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.js"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}

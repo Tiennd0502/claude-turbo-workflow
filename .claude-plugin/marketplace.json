@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-turbo-workflow",
+  "description": "Ticket-to-PR workflow for Turborepo projects on Claude Code",
+  "owner": {
+    "name": "Tien Danh Nguyen"
+  },
+  "allowCrossMarketplaceDependenciesOn": ["claude-plugins-official"],
+  "plugins": [
+    {
+      "name": "turbo-workflow",
+      "description": "Design, plan, TDD, review, verify, commit and PR for one ticket in a Turborepo, with saved status and resume",
+      "source": "./plugins/turbo-workflow",
+      "category": "development"
+    }
+  ]
+}

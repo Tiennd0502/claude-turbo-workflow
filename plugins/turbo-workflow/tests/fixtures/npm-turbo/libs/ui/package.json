@@ -1,0 +1,10 @@
+{
+  "name": "@fixture/ui",
+  "private": true,
+  "scripts": {
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "react": "^19.0.0"
+  }
+}
