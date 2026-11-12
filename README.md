@@ -13,7 +13,7 @@ You approve the design and the plan (Gate 1). Everything after that runs without
 flowchart LR
     t(["ticket"]) --> d["design"] --> p["plan"] --> g{{"🛑 Gate 1"}}
     g --> i["implement<br/>TDD + per-task review"] --> r["code review"] --> v["verify<br/>changed apps"]
-    v --> c["commit"] --> s["security<br/>review"] --> pr(["draft PR<br/>ticket → review"])
+    v --> u["UAT<br/>in the running app"] --> c["commit"] --> s["security<br/>review"] --> pr(["draft PR<br/>ticket → review"])
     classDef gate fill:#fde68a,stroke:#b45309,color:#111;
     class g gate;
 ```

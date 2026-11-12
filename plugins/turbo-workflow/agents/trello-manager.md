@@ -37,7 +37,7 @@ Only perform writes the prompt explicitly lists as approved by the user (card + 
 
 ## Report
 
-Reply in the language the user writes in (the prompt's language), briefly:
+Reply briefly:
 
 | Card | Trello status | Actual state | Evidence |
 | --- | --- | --- | --- |

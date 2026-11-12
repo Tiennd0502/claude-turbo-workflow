@@ -24,9 +24,10 @@ flowchart TD
     s8 -- "logic fix" --> s7
     s8 --> s9["9. UAT<br/>uat-tester agent in the running app"]
     s9 -- "AC fails: fix → review → verify → UAT" --> s9
-    s9 --> s9g{{"🛑 UAT gate<br/>rounds out, AC still failing"}}
+    s9 -- "rounds out, AC still failing" --> s9g{{"🛑 UAT gate"}}
+    s9g -- "Stop; I check it myself" --> paused
     s9g -- "Commit anyway" --> s10
-    s9 --> s10["10. Commit"]
+    s9 -- "every AC passes, or UAT not run" --> s10["10. Commit"]
     s10 --> s11["11. Security review"]
     s11 -- "finding: fix → review → verify → UAT → amend" --> s11
     s11 --> s12["12. Push + draft PR"]
