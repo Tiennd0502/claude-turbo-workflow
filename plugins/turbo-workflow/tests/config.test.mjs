@@ -76,6 +76,30 @@ test('reports the bad field', () => {
   assert.deepEqual(validateConfig(validConfig()), []);
 });
 
+test('config without uat is valid', () => {
+  assert.deepEqual(validateConfig(validConfig()), []);
+});
+
+test('uat keys are all optional', () => {
+  assert.deepEqual(
+    validateConfig({
+      ...validConfig(),
+      uat: { api: { devCommand: 'pnpm dev:api' } },
+    }),
+    [],
+  );
+  assert.deepEqual(validateConfig({ ...validConfig(), uat: {} }), []);
+});
+
+test('uat rejects bad types', () => {
+  const errorsOf = (uat) => validateConfig({ ...validConfig(), uat }).join(';');
+  assert.match(errorsOf({ signIn: 1 }), /uat\.signIn/);
+  assert.match(errorsOf({ api: { token: [] } }), /uat\.api\.token/);
+  assert.match(errorsOf({ extra: 'x' }), /uat\.extra/);
+  assert.match(errorsOf({ api: { extra: 'x' } }), /uat\.api\.extra/);
+  assert.match(errorsOf('x'), /uat/);
+});
+
 test('commands per package manager', () => {
   const expected = {
     pnpm: ['pnpm run build', 'pnpm exec lint-staged', 'pnpm-lock.yaml'],

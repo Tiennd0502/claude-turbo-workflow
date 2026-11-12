@@ -306,7 +306,7 @@ export function detect(root) {
         `/${specsDir}/`,
       ].some((entry) => gitignore.includes(entry)),
       // superpowers' plan ledgers (and a PR draft made with no spec dir);
-      // step 9 commits with `git add -A`, so they must be ignored.
+      // step 10 commits with `git add -A`, so they must be ignored.
       gitignoreHasSuperpowers: [
         '.superpowers',
         '.superpowers/',

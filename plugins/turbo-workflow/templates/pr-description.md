@@ -51,7 +51,7 @@
 
 With no spec dir, use one row instead: | Verify | Not applicable: no app code changed |. With a spec dir whose test-report.md has no Plan checks section yet: Plan checks not run.
 
-Requirements shown as `PASS (screenshot, manual)`, `PASS (plan check)` or `Not verified` with a `No screenshot:` reason in report.md go in their own list here, apart from the test results. -->
+Requirements shown as `PASS (screenshot, manual)`, `PASS (UAT)`, `PASS (plan check)` or `Not verified` with a `No screenshot:` reason in report.md go in their own list here, apart from the test results. -->
 
 <!-- Optional, for failing or unusual runs: the test runner's summary lines as text.
 <details><summary>Test output</summary>
@@ -60,6 +60,17 @@ Requirements shown as `PASS (screenshot, manual)`, `PASS (plan check)` or `Not v
 
 </details>
 -->
+
+## UAT sign-off
+
+<!-- From report.md's `## UAT`; delete this section when report.md has none. The status line, then one unticked checkbox per scenario with its result and assertion, then the three human checks. A human ticks them; nothing waits on them. Text only: no UAT screenshots. -->
+
+UAT: <!-- passed | failed | failed (AC<n> disputed: <reason>) | not run (<reason>) -->
+
+- [ ] <!-- S1 (AC1): PASS — <assertion> -->
+- [ ] Copy reads right
+- [ ] Layout looks right
+- [ ] The flow feels right
 
 ---
 

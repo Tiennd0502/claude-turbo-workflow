@@ -573,3 +573,11 @@ test('flags that do not apply to the command are errors', () => {
   assert.equal(remove.status, 1);
   assert.ok(existsSync(join(root, LOCK)));
 });
+
+test('copyList includes uat', () => {
+  const list = copyList(validConfig());
+  assert.ok(list.some((e) => e.from === 'skills/uat/SKILL.md' && e.to === '.claude/skills/uat/SKILL.md'));
+  assert.ok(list.some((e) => e.from === 'agents/uat-tester.md' && e.to === '.claude/agents/uat-tester.md'));
+  assert.equal(rewrite('/turbo-workflow:uat <spec dir>'), '/uat <spec dir>');
+  assert.equal(rewrite('the `turbo-workflow:uat-tester` agent'), 'the `uat-tester` agent');
+});

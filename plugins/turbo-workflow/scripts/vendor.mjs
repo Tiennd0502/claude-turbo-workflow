@@ -32,8 +32,8 @@ export const PLUGIN_DIR = join(import.meta.dirname, '..');
 export const SOURCE = 'https://github.com/Tiennd0502/claude-turbo-workflow';
 export const LOCK = '.claude/turbo-workflow.lock';
 
-const SKILLS = ['work-ticket', 'ticket-status', 'pr-description', 'ui-screenshot'];
-const AGENTS = ['plan-reviewer', 'pr-writer', 'ui-screenshotter'];
+const SKILLS = ['work-ticket', 'ticket-status', 'pr-description', 'ui-screenshot', 'uat'];
+const AGENTS = ['plan-reviewer', 'pr-writer', 'ui-screenshotter', 'uat-tester'];
 const SCRIPTS = ['config', 'changed-apps', 'coverage-diff', 'ticket-state'];
 const TEMPLATES = ['test-report', 'pr-description'];
 export const HOOKS = ['block-forbidden-command', 'notify-on-finish'];
@@ -76,7 +76,7 @@ export function copyList(config) {
 }
 
 const NAMES =
-  'work-ticket|ticket-status|pr-description|ui-screenshot|plan-reviewer|pr-writer|trello-manager|ui-screenshotter';
+  'work-ticket|ticket-status|pr-description|ui-screenshot|plan-reviewer|pr-writer|trello-manager|ui-screenshotter|uat-tester|uat';
 const ROOT = '(?:\\$\\{CLAUDE_PLUGIN_ROOT\\}|<plugin>)/';
 
 // Text only the copy has. The sources hold just `<!-- copy: <name> -->`, so a

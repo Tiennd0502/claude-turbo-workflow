@@ -1,7 +1,7 @@
 {
   "name": "turbo-workflow",
   "description": "Design, plan, TDD, review, verify, commit and PR for one ticket in a Turborepo, with saved status and resume",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Tien Danh Nguyen"
   },

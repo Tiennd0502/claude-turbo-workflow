@@ -22,18 +22,22 @@ flowchart TD
     s7 -- "bug or rules violation: fix" --> s7
     s7 --> s8["8. Verify each changed app<br/>test-report.md · report.md<br/>(+ after screenshots)"]
     s8 -- "logic fix" --> s7
-    s8 --> s9["9. Commit"]
-    s9 --> s10["10. Security review"]
-    s10 -- "finding: fix → review → verify → amend" --> s10
-    s10 --> s11["11. Push + draft PR"]
-    s11 --> s12["12. move: inProgress → review"]
-    s12 --> s13(["13. Report + notification"])
-    s13 -. "PR merged on GitHub" .-> done["done-on-merge, or<br/>/work-ticket TICKET done<br/>move: review → done · delete the branch"]
+    s8 --> s9["9. UAT<br/>uat-tester agent in the running app"]
+    s9 -- "AC fails: fix → review → verify → UAT" --> s9
+    s9 --> s9g{{"🛑 UAT gate<br/>rounds out, AC still failing"}}
+    s9g -- "Commit anyway" --> s10
+    s9 --> s10["10. Commit"]
+    s10 --> s11["11. Security review"]
+    s11 -- "finding: fix → review → verify → UAT → amend" --> s11
+    s11 --> s12["12. Push + draft PR"]
+    s12 --> s13["13. move: inProgress → review"]
+    s13 --> s14(["14. Report + notification"])
+    s14 -. "PR merged on GitHub" .-> done["done-on-merge, or<br/>/work-ticket TICKET done<br/>move: review → done · delete the branch"]
 
     classDef gate fill:#fde68a,stroke:#b45309,color:#111;
     classDef auto fill:#dbeafe,stroke:#1d4ed8,color:#111;
-    class g1,pg gate;
-    class s5,s6,s7,s8,s9,s10,s11,s12 auto;
+    class g1,pg,s9g gate;
+    class s5,s6,s7,s8,s9,s10,s11,s12,s13 auto;
 ```
 
 - **Yellow**: a gate. The run stops and asks.
@@ -48,8 +52,9 @@ flowchart TD
 | Step 2 | Clarifying questions while designing, then approval of `design.md` |
 | Gate 1 | Approve and start · Stop here · Request changes |
 | Step 6 | Plan-change gate: a deviation that changes an acceptance criterion, the scope, the changed apps, a dependency or an unlisted file |
-| Steps 7, 8, 10 | Round limit: after 3 fix rounds before the commit (or 3 after it), the run stops and asks |
-| Step 11 | A failed push or `gh pr create`: the run stops and notifies; a resume runs step 11 again |
+| Step 9 | UAT gate: a UAT acceptance criterion still fails after the fix rounds: stop and check it yourself, or commit and open the draft PR with UAT failed |
+| Steps 7, 8, 9, 11 | Round limit: after 3 fix rounds before the commit (or 3 after it), the run stops and asks |
+| Step 12 | A failed push or `gh pr create`: the run stops and notifies; a resume runs step 12 again |
 
 Every question uses one format: option A is "(Recommended)", then B and C, and D ("Other") for your own answer. At each gate and on a failure, a desktop notification (macOS) says what is needed.
 
@@ -60,7 +65,7 @@ stateDiagram-v2
     direction LR
     [*] --> todo
     todo --> inProgress: step 1
-    inProgress --> review: step 12 (PR created)
+    inProgress --> review: step 13 (PR created)
     review --> done: PR merged (done-on-merge)<br/>or the done command
     done --> [*]
 ```
@@ -76,9 +81,14 @@ The tracker adapter makes these moves (`trello`: lists on a board). With tracker
 | `coverage-baseline-<app>.json` | same dir | no |
 | `test-report.md` (each verify run), `report.md` | same dir | no |
 | `pr-description.md` | same dir | no (it becomes the PR body) |
+| `uat-scenarios.md`, `uat/` (evidence screenshots) | same dir | no |
 | Before / after screenshots (UI changes only) | the app's `screenshot.dir` | yes, with the code |
 | Plan ledger | `.superpowers/sdd/` | no (gitignored) |
 | The code, its tests | the repo | yes: one Conventional Commits commit |
+
+## UAT
+
+Step 9 checks the change in the running app against what the ticket asked. The `uat-tester` agent (the `uat` skill) sees the ticket and `design.md`, never the plan, the code, the diff or the tests; it writes scenarios from the acceptance criteria and asserts on exact text in the browser. A failing criterion is fixed through code review and verify, then tested again. It is skipped when no app changed, and a run that cannot start the app is reported as "not run", not as a failure. `/uat <spec dir | ticket>` runs it alone.
 
 ## Changed apps decide the checks
 

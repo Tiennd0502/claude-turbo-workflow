@@ -12,7 +12,7 @@ Notation used below:
 <!-- /plugin-only -->
 - A ticket comes from the tracker adapter named by `tracker.type` (`<plugin>/trackers/<type>/adapter.md`).
 
-For a feature or bug task, use the superpowers skills `brainstorming` → `writing-plans` → `executing-plans` (or `subagent-driven-development` outside `/work-ticket`). They allow user preferences to override their defaults; in a project with turbo-workflow, the rules below override them. After implementing, follow these rules in this order: code review (rule 8), verify of each changed app (rule 7), report (rule 9), commit (rule 11), security review on the commit (rule 8), finishing the branch (rule 10). `/work-ticket` runs the whole flow for one ticket.
+For a feature or bug task, use the superpowers skills `brainstorming` → `writing-plans` → `executing-plans` (or `subagent-driven-development` outside `/work-ticket`). They allow user preferences to override their defaults; in a project with turbo-workflow, the rules below override them. After implementing, follow these rules in this order: code review (rule 8), verify of each changed app (rule 7), report (rule 9), UAT (step 9 of `/work-ticket`, which adds to the report), commit (rule 11), security review on the commit (rule 8), finishing the branch (rule 10). `/work-ticket` runs the whole flow for one ticket.
 
 ## 0. Changed apps
 
@@ -38,7 +38,8 @@ The changed apps decide which rules, `verify` skill, coverage baseline and secur
 - Report (end of review): `<specsDir>/YYYY-MM-DD/<feature-name>/report.md`
 - Test report (every verify run): `<specsDir>/YYYY-MM-DD/<feature-name>/test-report.md`
 - Coverage baseline (before any code change): `<specsDir>/YYYY-MM-DD/<feature-name>/coverage-baseline-<app>.json`, one per changed app (rule 0), none with no changed app. 
-- PR description (step 11 of `/work-ticket`, or the `pr-description` skill): `<specsDir>/YYYY-MM-DD/<feature-name>/pr-description.md`
+- UAT scenarios (step 9 of `/work-ticket`, or the `uat` skill): `<specsDir>/YYYY-MM-DD/<feature-name>/uat-scenarios.md`, written by the first UAT run and handed back to every rerun; its evidence screenshots go to `<spec dir>/uat/`, never committed.
+- PR description (step 12 of `/work-ticket`, or the `pr-description` skill): `<specsDir>/YYYY-MM-DD/<feature-name>/pr-description.md`
 - Saved status (`/work-ticket`, from step 2): `state.json` in the spec dir, written only by `node "<plugin>/scripts/ticket-state.mjs"`; its `status` and `task-diff` print, they write no file. Its fingerprints are local refs under `refs/work-ticket/<feature-name>/`, never pushed; `close` deletes them. A spec without `state.json` (started before it existed) resumes from the `/work-ticket` Resume table.
 - Screenshots (UI changes only: a file in a changed app's `ui` globs, test files excluded: `*.test.*`, `*.spec.*`, `**/__tests__/**`): `<screen>-before.<ext>` and `<screen>-after.<ext>` in `screenshot.dir` of `.claude/workflow.json` (default `docs/images/<feature-name>/`). They are committed with the code and embedded in the PR description. The `ui-screenshot` skill takes them.
 - `test-report.md` has Overview rows and a Coverage block per changed app, or a "Plan checks" section with no changed app (rule 7, `<plugin>/templates/test-report.md`); `report.md` has one `verify` table per changed app (rule 9).
@@ -66,7 +67,7 @@ The design lists every requirement of the ticket, analysed from what the adapter
 - [ ] R1 — <requirement in the ticket's words> (description | checklist)
 ```
 
-Each `R<n>` is ticked at step 8 of `/work-ticket`, once its evidence in the final verify run is `PASS`, `PASS (screenshot, manual)` or `PASS (plan check)` (rule 9).
+Each `R<n>` is ticked at step 8 of `/work-ticket`, once its evidence in the final verify run is `PASS`, `PASS (screenshot, manual)` or `PASS (plan check)`, and again at step 9 after each UAT run, where `PASS (UAT)` also ticks it (rule 9).
 
 The design records every question asked during brainstorming and builder checks:
 
@@ -160,7 +161,7 @@ The plan's Global Constraints come from the rules of each changed app (rule 0, w
 
 ## 6. Commits and hand-offs
 
-Tasks end at "run the tests, expect PASS". In `/work-ticket`, step 9 commits once step 8 passes; otherwise commits happen only when the user asks.
+Tasks end at "run the tests, expect PASS". In `/work-ticket`, step 10 commits once steps 8 and 9 pass; otherwise commits happen only when the user asks.
 
 - No worktree: the feature branch in the main checkout is the workspace; do not invoke `using-git-worktrees` and do not run its setup or baseline steps (dependencies are installed; the coverage baseline at step 5 is the baseline run).
 - `brainstorming` in `/work-ticket`:
@@ -174,7 +175,7 @@ Tasks end at "run the tests, expect PASS". In `/work-ticket`, step 9 commits onc
 - `executing-plans` in `/work-ticket`: after each task passes, dispatch the `plan-reviewer` subagent with the plan path and the task number. It checks that task against its acceptance criteria and that each test the plan names for it asserts the AC. Fix any gap before the next task.
   - With a saved status (`state.json`), `plan-reviewer` runs in diff mode on the task's `task-diff` output, and `task-done` runs only after `plan-reviewer` passes (overrides `executing-plans`' "Complete the task"): the ledger's `Task N: complete` then means tested and reviewed, and the saved status holds everything finer (task step, tests passed, review gap).
   - A resume with a saved status skips `executing-plans`' setup: no full read of the plan or the spec, no new pre-flight scan (its rows are in the ledger), no new todos for finished tasks. Read the brief `status` prints (Global Constraints, `## Deviations`, the ledger's rulings, the findings and the current task, then the status), run `task-start` for the current task, and do what its `Next:` line says.
-- Deviations from the plan in `/work-ticket`, at step 6 and in any fix at steps 7, 8 and 10 (overrides `executing-plans`' "Rulings, not stalls" and adds a fifth case to its "Four things stop you"). Classify each one by whether it changes what Gate 1 approved:
+- Deviations from the plan in `/work-ticket`, at step 6 and in any fix at steps 7, 8 and 11 (overrides `executing-plans`' "Rulings, not stalls" and adds a fifth case to its "Four things stop you"). Classify each one by whether it changes what Gate 1 approved:
   - It changes an acceptance criterion, the scope, the `## Ticket requirements` mapping, which apps are changed (rule 0), an item a changed app lists under `planChanges` in `.claude/workflow.json`, a dependency, or touches a file the plan does not list (a generated name the plan describes, such as `Migration<timestamp>.ts`, counts as listed) → stop before making it and ask:
     - A "Update the plan as proposed" (Recommended): edit `plan.md`, including `## Ticket requirements`, `## Risks` and `## Plan checks` (rule 4) when the change affects them, and add the entry to `## Deviations` (task, what changes, why, `approved <YYYY-MM-DD>`). A new task takes the next free number; never renumber tasks, since the ledger records them by number. An R dropped from scope keeps its row, with `out of scope, approved <YYYY-MM-DD>` in the Test column.
     - B "Keep the plan; find another way". If no way inside the plan works, ask again with only A and C.
@@ -184,6 +185,7 @@ Tasks end at "run the tests, expect PASS". In `/work-ticket`, step 9 commits onc
   - `## Deviations` sits right after `## Risks`, before the first task; at the end of the plan, the brief of the last task would include it.
   - Not deviations: files the workflow itself creates (screenshots in `screenshot.dir` of `.claude/workflow.json`) and the lockfile change of an approved dependency.
   - A deviation that `plan-reviewer` reports as already in the diff gets the same question, with B meaning revert it.
+  - A fix of a failing UAT AC (step 9 of `/work-ticket`) asks no question for what it changes in the approved plan (an acceptance criterion, the scope, the `## Ticket requirements` mapping, a test the plan names, a file the plan does not list): the failed AC, taken from the owner's words, is the approval. Update `plan.md` (the AC, `## Ticket requirements`, the tests, and each file the fix touches that the plan does not list, added to the owning task's `**Files:**` block) and add the `## Deviations` entry `Task <n>: <what changes> — from UAT AC<n>, <YYYY-MM-DD>`, plus the ledger's `Ruling:` line. A change of the changed apps, a `planChanges` item or a dependency still asks.
 - `subagent-driven-development` (not used by `/work-ticket`):
   - implementers do not commit;
   - do not run `review-package`;
@@ -236,13 +238,13 @@ The acceptance criteria were already checked per task (rule 6). Handle each find
 
 After fixing a bug, run the related tests and the autofix (rule 7), then `code-review` on the fix. In `/work-ticket`, a fix that changes logic in `src/` after a failed verify also goes back to the code review for that fix, instead of the `verify` skill's step 4 ("Fix and rerun").
 
-**Round limit.** A round is one fix plus the check that follows it: `code-review` on a logic fix, or a `verify` rerun for a test, lint or format fix. The first review of the whole change is not a round. At most 3 rounds before the commit (code review and verify together) and 3 more after it (the security review, where one round is a finding's fix → code review → verify → amend → rerun). Then stop, notify and ask the user. A round is counted once, when its fix starts: finishing a fix that a stopped run left half done is the same round. With a saved status, findings and rounds are saved with `ticket-state.mjs` (`findings`, `finding fixed|left`, `round pre|post`), so a resume fixes only the open findings and keeps counting rounds.
+**Round limit.** A round is one fix plus the check that follows it: `code-review` on a logic fix, a `verify` rerun for a test, lint or format fix, or, for a failing UAT AC, the fix → code review → verify → UAT rerun. The first review of the whole change is not a round, and neither is a disputed UAT AC (`finding left`). At most 3 rounds before the commit (code review, verify and UAT together) and 3 more after it (the security review, where one round is a finding's fix → code review → verify → UAT → amend → rerun). Then stop, notify and ask the user. A round is counted once, when its fix starts: finishing a fix that a stopped run left half done is the same round. With a saved status, findings and rounds are saved with `ticket-state.mjs` (`findings`, `findings --uat` for the `UAT-AC<n>` ones, `finding fixed|left`, `round pre|post`), so a resume fixes only the open findings and keeps counting rounds.
 
 **Security review, after the commit and before the push.** Run it when the committed change (`<base commit>..HEAD`) touches access control (guards, a role or auth decorator added to or removed from any route, authentication and its tokens), config or secrets (`.env*`, CORS, Docker, CI workflows), dependencies (`package.json`, the lockfile, the `catalog:`), or a path in an app's `security` list in `.claude/workflow.json`. Otherwise skip it.
 
 Invoke the built-in `security-review` skill. It runs `git diff origin/HEAD...`, the committed branch diff against origin's default branch, so it needs the commit but no PR. First check `git rev-parse --abbrev-ref origin/HEAD`. If it fails, or is not `origin/<base branch>` from the plan, that diff is not this change's diff: tell the user and ask before running it. A missing `origin/HEAD` is set with `git remote set-head origin -a`. A finding:
 1. fix it, then run the code review on the fix;
-2. run `verify` (rule 7);
+2. run `verify` (rule 7), then, in `/work-ticket`, UAT (step 9);
 3. `git add -A` and amend the commit: in `/work-ticket` without asking (nothing is pushed yet), otherwise after the user approves;
 4. rerun `security-review`.
 
@@ -255,14 +257,17 @@ The multi-agent `/claude-security` scan is not part of this flow. The user runs 
 Before the commit, write `report.md` with:
 
 - a link to `test-report.md` and one `verify` table per changed app (with no changed app, the plan checks);
-- an `R → test → result` table from the final verify run. Each row has one evidence type:
+- an `R → test → result` table from the final verify run, plus the evidence of the last UAT run. Each row has one evidence type:
   - `PASS`: a test passed in the final verify run;
   - `PASS (screenshot, manual)`: a UI requirement (an app's `ui` globs) shown by the after screenshot the row links, with both its before and after images saved. These rows are listed apart from the test PASS rows, never counted with them; whether the images are right is the PR reviewer's call;
   - `PASS (plan check)`: a check from the plan's `## Plan checks`, with its command or steps and the observed result. Only when there is no changed app;
+  - `PASS (UAT)`: an R with no passing test whose UAT rows (`AC<n> (R<n>)`) all passed in the last UAT run (step 9 of `/work-ticket`). Listed apart from the test PASS rows, like `PASS (screenshot, manual)`. An R with a passing test keeps `PASS`; an R whose only evidence is a failed or not-run UAT row stays `Not verified`;
   - `Not verified`, with the reason, for the user to check, never PASS: an AC with no test, a test in a SKIPPED gate (e.g. e2e skipped by the database guard), a test that only a package runs ("package tests run only in pre-push"), or a UI requirement with a missing before or after image (reason `No screenshot: <screen>: <before|after|before and after> image missing`, one per failed screen);
 - each `## Screens` screen (rule 4) with a missing before or after image, as `No screenshot: <screen>: <before|after|before and after> image missing`, also when its requirement keeps `PASS` from a test;
 - the code-review result: findings fixed, and findings left with their reason (cleanup or false positive);
-- one Security line. Step 8 writes `Security: pending`. Step 10 of `/work-ticket`, after the commit, replaces it with `no findings`, `findings fixed` (plus each finding and its fix) or `skipped, no security-relevant change`. A rerun of step 8 during step 10 keeps the Security line and its findings as they are;
+- `## UAT`, written by step 9 of `/work-ticket` after each UAT run: the status (`passed`, `failed`, `failed (AC<n> disputed: <reason>)` or `not run (<reason>)`), whether a fix round ran, the table `Scenario | Covers | Kind | Result | Assertion`, and the console error count. No changed app → no `## UAT`;
+- `## Needs your review`, with `## UAT`: not-run reasons, failed `negative` or `extra` rows, disputed ACs with their reason, and ticket/design disagreements, or "none";
+- one Security line. Step 8 writes `Security: pending`. Step 11 of `/work-ticket`, after the commit, replaces it with `no findings`, `findings fixed` (plus each finding and its fix) or `skipped, no security-relevant change`. A rerun of step 8 or 9 during step 11 keeps the Security line and its findings as they are;
 - the plan's `## Deviations`, or "none";
 - tests added, and decisions made at each gate.
 
@@ -272,10 +277,10 @@ No `superpowers:finishing-a-development-branch`, and no verify rerun: the last v
 
 - Run the `pr-description` skill, which saves the draft to `<spec dir>/pr-description.md`.
 - There is no local merge option: PRs are merged on GitHub.
-- In `/work-ticket` (step 11): no question. `git push -u <git.remote> <branch>`, then `gh pr create --draft --base <PR target> --head <branch> --title "<title>" --body-file <spec dir>/pr-description.md`. A failed push or `gh pr create` stops and notifies. The developer reviews the draft on GitHub and marks it ready.
+- In `/work-ticket` (step 12): no question. `git push -u <git.remote> <branch>`, then `gh pr create --draft --base <PR target> --head <branch> --title "<title>" --body-file <spec dir>/pr-description.md`. A failed push or `gh pr create` stops and notifies. The developer reviews the draft on GitHub and marks it ready.
 - Otherwise show the title and the body, then ask A "Push and create the PR with this description" (Recommended) or B "Keep the branch as-is". Nothing is pushed before the user picks A. To change the draft, the user answers in D (Other); edit `pr-description.md`, show it again and ask again. Option A runs the same push and `gh pr create`, without `--draft`.
 - The base branch and the PR target come from the plan's Git section.
-- In `/work-ticket`, step 12 then moves the ticket to review with the adapter's `move`; the adapter's done-on-merge moves it to done when the PR is merged.
+- In `/work-ticket`, step 13 then moves the ticket to review with the adapter's `move`; the adapter's done-on-merge moves it to done when the PR is merged.
 
 ## 11. Commit
 

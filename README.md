@@ -3,7 +3,7 @@
 A [Claude Code](https://code.claude.com) plugin marketplace with one plugin, **`turbo-workflow`**: it takes one ticket from your tracker to a draft GitHub PR in a Turborepo monorepo.
 
 ```text
-design → plan → 🛑 Gate 1 → TDD per task → code review → verify each changed app
+design → plan → 🛑 Gate 1 → TDD per task → code review → verify each changed app → UAT
        → commit → security review → push + draft PR → ticket to review
 ```
 
@@ -51,7 +51,7 @@ It needs Claude Code, Node.js ≥ 24, git, `gh` signed in to GitHub, and the `su
 | | **Copy into `.claude/`** (default) | **Plugin** |
 | --- | --- | --- |
 | What the project holds | the whole workflow: `.claude/rules/workflow.md`, `skills/`, `agents/`, `scripts/`, `templates/`, `trackers/`, `hooks/`, the hooks in `settings.json`, `.mcp.json`, and `.claude/turbo-workflow.lock` | only the config and the per-app files |
-| Commands | `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot` | `/turbo-workflow:work-ticket`, `/turbo-workflow:ticket-status`, … |
+| Commands | `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot`, `/uat` | `/turbo-workflow:work-ticket`, `/turbo-workflow:ticket-status`, … |
 | Teammates need | the `superpowers` plugin (enabled in `settings.json`) | this plugin and superpowers |
 | claude.ai/code cloud sessions | the copied `.claude/` carries over (superpowers still has to be available there) | repo-declared plugins are not installed |
 | Edit per project | yes, edit the copied files | no |
@@ -74,6 +74,7 @@ Copy mode names; in plugin mode add the `turbo-workflow:` prefix (`/turbo-workfl
 | `/ticket-status [spec dir]` | where a run stopped, read only |
 | `/pr-description` | drafts a PR description for the current branch |
 | `/ui-screenshot` | before / after screenshots of a UI change |
+| `/uat <spec dir \| ticket>` | checks the change in the running app against the ticket, blind to the plan and code |
 | `/turbo-workflow-sync [version]` | copy mode only: update the copied files to a release |
 
 ## Documentation

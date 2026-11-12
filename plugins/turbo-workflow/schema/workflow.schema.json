@@ -134,6 +134,44 @@
         }
       }
     },
-    "shared": { "type": "array", "items": { "type": "string" } }
+    "shared": { "type": "array", "items": { "type": "string" } },
+    "uat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional. Read by the uat skill, never written by it.",
+      "properties": {
+        "signIn": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Clicks only, e.g. 'On /sign-in click the Google button; pick the only account'. Never a credential to type."
+        },
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "description": "API base URL, e.g. http://localhost:3000/api."
+            },
+            "docs": {
+              "type": "string",
+              "minLength": 1,
+              "description": "URL of the API description (OpenAPI JSON), e.g. http://localhost:3000/api/docs-json."
+            },
+            "token": {
+              "type": "string",
+              "minLength": 1,
+              "description": "JS expression run in the signed-in page that returns the bearer token, e.g. window.Clerk.session.getToken(). Code, not a secret."
+            },
+            "devCommand": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Command that starts the API, e.g. pnpm dev:api."
+            }
+          }
+        }
+      }
+    }
   }
 }

@@ -190,7 +190,34 @@ export function validateConfig(config) {
       }
     }
   }
+
+  if (config.uat !== undefined) validateUat(config.uat, need);
   return errors;
+}
+
+const UAT_KEYS = ['signIn'];
+const UAT_API_KEYS = ['url', 'docs', 'token', 'devCommand'];
+
+function validateUat(uat, need) {
+  if (need(isObject(uat), 'uat', 'must be an object') !== true) return;
+  for (const key of Object.keys(uat))
+    need(
+      key === 'api' || UAT_KEYS.includes(key),
+      `uat.${key}`,
+      'is not a known key',
+    );
+  if (uat.signIn !== undefined)
+    need(isString(uat.signIn), 'uat.signIn', 'must be a non-empty string');
+  if (uat.api === undefined) return;
+  if (need(isObject(uat.api), 'uat.api', 'must be an object') !== true) return;
+  for (const [key, value] of Object.entries(uat.api))
+    need(
+      UAT_API_KEYS.includes(key) && isString(value),
+      `uat.api.${key}`,
+      UAT_API_KEYS.includes(key)
+        ? 'must be a non-empty string'
+        : 'is not a known key',
+    );
 }
 
 function gitRoot(cwd = process.cwd()) {

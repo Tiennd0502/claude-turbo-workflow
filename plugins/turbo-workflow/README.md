@@ -1,6 +1,6 @@
 # turbo-workflow
 
-A Claude Code plugin that takes one ticket from a tracker to an open GitHub PR in a Turborepo project: design → plan → TDD per task → code review → verify each changed app → commit → security review → draft PR → ticket update. Gate 1 (the plan) is the one planned question: once it is approved, the commit, a security amend, the push and the draft PR run without asking, and you mark the PR ready on GitHub. The run still stops to ask when something leaves the plan (a plan change, the round limit). A saved status lets a stopped run resume at the exact task step.
+A Claude Code plugin that takes one ticket from a tracker to an open GitHub PR in a Turborepo project: design → plan → TDD per task → code review → verify each changed app → UAT → commit → security review → draft PR → ticket update. Gate 1 (the plan) is the one planned question: once it is approved, the commit, a security amend, the push and the draft PR run without asking, and you mark the PR ready on GitHub. The run still stops to ask when something leaves the plan (a plan change, the round limit). A saved status lets a stopped run resume at the exact task step.
 
 Docs: [how the workflow runs](../../docs/workflow.md) (flow chart), [project configuration](../../docs/configuration.md), [plugin internals](../../docs/architecture.md).
 
@@ -35,7 +35,7 @@ They apply once a teammate trusts the project folder (the trust dialog on first 
 
 ## Set up a project
 
-Run `/turbo-workflow:init` in the project. It first asks the install mode: **copy the workflow into `.claude/`** (default: the project gets `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot`, the agents, scripts, hooks and rules, plus `.claude/turbo-workflow.lock`, and runs without this plugin) or **plugin** (the project keeps only its config). Then it reads the repo for suggested answers and asks every value (tracker, branches, package manager, apps, shared paths), shows the files it will write, and writes them only after you confirm. In both modes it writes:
+Run `/turbo-workflow:init` in the project. It first asks the install mode: **copy the workflow into `.claude/`** (default: the project gets `/work-ticket`, `/ticket-status`, `/pr-description`, `/ui-screenshot`, `/uat`, the agents, scripts, hooks and rules, plus `.claude/turbo-workflow.lock`, and runs without this plugin) or **plugin** (the project keeps only its config). Then it reads the repo for suggested answers and asks every value (tracker, branches, package manager, apps, shared paths), shows the files it will write, and writes them only after you confirm. In both modes it writes:
 
 - `.claude/workflow.json`, the project config ([schema](schema/workflow.schema.json));
 - per app, when missing: `apps/<app>/.claude/rules/coding.md` and `testing.md` (skeletons with TODOs to fill) and `apps/<app>/.claude/skills/verify/SKILL.md` (the app's gates);
@@ -57,6 +57,7 @@ Plugin mode names below; in copy mode drop the `turbo-workflow:` prefix (`/work-
 | `/turbo-workflow:ticket-status [spec dir]` | where a run stopped, without changing anything |
 | `/turbo-workflow:pr-description` | drafts a PR description for the current branch |
 | `/turbo-workflow:ui-screenshot` | before/after screenshots of a UI change |
+| `/turbo-workflow:uat <spec dir \| ticket>` | checks the change in the running app against the ticket, blind to the plan and code |
 
 Trackers: `trello` (a board with one list per state: todo, in progress, review, done) and `none` (the ticket is the task you type). Workflow files (design, plan, reports) stay local in the specs dir.
 

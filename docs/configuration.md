@@ -69,6 +69,8 @@ Every project value lives in one file, `.claude/workflow.json`, committed with t
 | `apps.<name>.security` | Paths (relative to `dir`) that trigger the security review |
 | `apps.<name>.ui` | Globs (relative to `dir`) that count as a UI change and need before / after screenshots |
 | `apps.<name>.screenshot` | Screenshot settings: folder (`{feature}` = the branch name after `<type>/`), format, theme storage key, dev command, URL, cookies to set, a ready check and selectors to remove |
+| `uat.signIn` | Optional. Clicks only that sign the UAT browser in (never a credential to type) |
+| `uat.api` | Optional. `url` (API base), `docs` (OpenAPI JSON URL), `token` (a JS expression run in the signed-in page that returns the bearer token; code, not a secret) and `devCommand` (starts the API). All keys optional |
 | `shared` | Paths every app depends on (shared config packages, the workspace file). A change there counts as every app and rebuilds the packages first |
 
 ## Copy mode: the lock

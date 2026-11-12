@@ -9,7 +9,9 @@
 //                                       <ticket> is a URL or none:<feature>
 //   rename <spec> <new spec> <branch>   rewrite the spec dir and branch fields
 //                                       (Gate 1 option C; move the dir after)
-//   flow <spec> <step>                  2 3 gate1 5 6 7 8 9 10 11 12 closed
+//   flow <spec> <step>                  2 3 gate1 5 6 7 8 9 (UAT) 10 (commit)
+//                                       11 (security) 12 (push + PR)
+//                                       13 (ticket to review) closed
 //   base <spec> <commit> [<branch>]     the base commit and branch (step 5;
 //                                       branch defaults to git.baseBranch)
 //   at <spec> <task> <step>             steps before <step> are done, <step> is
@@ -22,7 +24,8 @@
 //   await <spec> <gate>                 the AskUserQuestion input about to be
 //                                       asked, as JSON on stdin
 //   answered <spec>                     the question was answered
-//   findings <spec>                     code review findings, JSON on stdin:
+//   findings <spec> [--uat] [file]      code review findings (or, with --uat,
+//                                       the UAT-* ones only), JSON on stdin:
 //                                       [{ "id", "summary" }]
 //   finding <spec> fixed|left <id> [reason]
 //   round <spec> pre|post               one workflow rule 8 round used
@@ -81,6 +84,7 @@ export const FLOW_STEPS = [
   '10',
   '11',
   '12',
+  '13',
   'closed',
 ];
 const IDENTITY = {
@@ -108,7 +112,19 @@ export function repoRoot(cwd = process.cwd()) {
 export function readState(specDir) {
   const path = join(specDir, STATE);
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf8'));
+  return migrate(JSON.parse(readFileSync(path, 'utf8')));
+}
+
+// v1 had no UAT step: steps 9-12 are now 10-13. In memory only; the next
+// write saves version 2.
+const RENUMBERED = { 9: '10', 10: '11', 11: '12', 12: '13' };
+function migrate(state) {
+  if (state.version != null && state.version !== 1) return state;
+  state.version = 2;
+  if (RENUMBERED[state.flow]) state.flow = RENUMBERED[state.flow];
+  const gate = state.awaiting?.gate;
+  if (RENUMBERED[gate]) state.awaiting.gate = RENUMBERED[gate];
+  return state;
 }
 
 export function writeState(specDir, state) {
@@ -246,7 +262,7 @@ export function tickSteps(text, taskNumber, upTo) {
 
 function newState(ticket, branch, specDir) {
   return {
-    version: 1,
+    version: 2,
     ticket,
     branch,
     specDir,
@@ -294,10 +310,11 @@ const FLOW_LABELS = {
   6: 'Implement',
   7: 'Code review',
   8: 'Verify',
-  9: 'Commit',
-  10: 'Security review',
-  11: 'Push + PR',
-  12: 'Ticket to review',
+  9: 'UAT',
+  10: 'Commit',
+  11: 'Security review',
+  12: 'Push + PR',
+  13: 'Ticket to review',
   closed: 'Closed',
 };
 const TASK_WORDS = {
@@ -308,6 +325,7 @@ const TASK_WORDS = {
   review_pass: 'review passed',
 };
 const ROUND_LIMIT = 3;
+const isUat = (finding) => String(finding.id).startsWith('UAT-');
 const flowAt = (step) => FLOW_STEPS.indexOf(step);
 
 // Paths the workflow itself writes, never flagged as outside the plan
@@ -367,11 +385,11 @@ function nextTaskAction(state, facts) {
 // The one action a resumed session takes next. Pure: `facts` are read from
 // git and the files by status().
 export function nextAction(state, facts) {
-  // Once the ticket's commit exists, steps 7 to 9 come back only inside the
-  // step 10 security fix.
+  // Once the ticket's commit exists, steps 7 to 10 come back only inside the
+  // step 11 security fix.
   const flow =
-    facts.commitsAfterBase && ['7', '8', '9'].includes(state.flow)
-      ? '10'
+    facts.commitsAfterBase && ['7', '8', '9', '10'].includes(state.flow)
+      ? '11'
       : state.flow;
   if (flow === 'closed') return 'nothing: ticket closed';
   if (
@@ -422,7 +440,9 @@ export function nextAction(state, facts) {
       return nextTaskAction(state, facts);
     case '7': {
       if (!state.codeReview.done) return 'run code-review';
-      const open = state.codeReview.findings.filter((f) => f.status === 'open');
+      const open = state.codeReview.findings.filter(
+        (f) => f.status === 'open' && !isUat(f),
+      );
       if (open.length) {
         return `fix findings ${open.map((f) => f.id).join(', ')}, then code-review on the fix`;
       }
@@ -430,14 +450,36 @@ export function nextAction(state, facts) {
     }
     case '8':
       return 'run step 8';
-    case '9':
-      return 'run step 9 (commit)';
+    case '9': {
+      const anyOpen = state.codeReview.findings.filter(
+        (f) => f.status === 'open',
+      );
+      if (anyOpen.length && (state.rounds?.pre ?? 0) >= ROUND_LIMIT) {
+        return anyOpen.some(isUat)
+          ? 'ask the UAT gate'
+          : 'stop: round limit reached; ask the user';
+      }
+      // A code review of a UAT fix runs here too: its findings come first.
+      const review = state.codeReview.findings.filter(
+        (f) => f.status === 'open' && !isUat(f),
+      );
+      if (review.length) {
+        return `fix findings ${review.map((f) => f.id).join(', ')}, then code-review on the fix`;
+      }
+      const open = state.codeReview.findings.filter(
+        (f) => f.status === 'open' && isUat(f),
+      );
+      if (!open.length) return 'run step 9 (UAT)';
+      return `fix UAT findings ${open.map((f) => f.id).join(', ')}, then code-review on the fix, step 8, then step 9`;
+    }
     case '10':
-      return facts.dirty
-        ? 'finish the step 10 security fix: code-review on it, step 8, amend, then security-review (same round)'
-        : 'run step 10';
+      return 'run step 10 (commit)';
     case '11':
-      return 'check the PR (gh pr view); if there is none, run step 11';
+      return facts.dirty
+        ? 'finish the step 11 security fix: code-review on it, step 8, step 9, amend, then security-review (same round)'
+        : 'run step 11';
+    case '12':
+      return 'check the PR (gh pr view); if there is none, run step 12';
     default:
       return 'check the PR, then move the ticket and close';
   }
@@ -850,19 +892,37 @@ const commands = {
     writeState(spec, state);
     return 0;
   },
-  findings(spec, [file], state) {
-    const findings = readInput(file).map(({ id, summary }) => ({
+  findings(spec, args, state) {
+    const uat = args.includes('--uat');
+    const [file] = args.filter((arg) => arg !== '--uat');
+    const input = readInput(file);
+    const wrong = input.filter((f) => isUat(f) !== uat).map((f) => f.id);
+    if (wrong.length) {
+      return usage(
+        uat
+          ? `findings --uat needs UAT- ids: ${wrong.join(', ')}`
+          : `findings without --uat takes no UAT- ids: ${wrong.join(', ')}`,
+      );
+    }
+    const fresh = input.map(({ id, summary }) => ({
       id,
       summary,
       status: 'open',
       reason: null,
     }));
-    const earlier = [
+    // Each kind replaces only its own open findings; the other kind stays.
+    const own = (f) => isUat(f) === uat;
+    const kept = state.codeReview.findings.filter((f) => !own(f));
+    const replaced = state.codeReview.findings.filter(own);
+    const closed = [
       ...(state.codeReview.closed ?? []),
-      ...state.codeReview.findings,
+      ...replaced.filter((f) => f.status !== 'open'),
     ];
-    const closed = earlier.filter((f) => f.status !== 'open');
-    state.codeReview = { done: true, findings, closed };
+    state.codeReview = {
+      done: uat ? state.codeReview.done : true,
+      findings: [...kept, ...fresh],
+      closed,
+    };
     writeState(spec, state);
     return 0;
   },

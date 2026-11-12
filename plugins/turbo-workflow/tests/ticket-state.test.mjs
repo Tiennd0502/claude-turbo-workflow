@@ -128,14 +128,46 @@ test('no state.json is a no-op', () => {
   assert.equal(out.stdout, '');
 });
 
-// PR #40: steps 9 (commit) and 11 (push + draft PR) replace Gates 2 and 3.
-test('flow takes steps 9 and 11', () => {
+test('flow takes step 13', () => {
   const { spec, run } = repo();
   run('init', spec, 'none:demo', 'feat/demo');
-  assert.equal(run('flow', spec, '9').status, 0);
-  assert.match(run('status', spec, '--no-brief').stdout, /Commit/);
-  assert.equal(run('flow', spec, '11').status, 0);
-  assert.equal(stateOf(spec).flow, '11');
+  assert.equal(run('flow', spec, '13').status, 0);
+  assert.equal(stateOf(spec).flow, '13');
+  assert.notEqual(run('flow', spec, '14').status, 0);
+});
+
+test('reads a v1 state', () => {
+  const { root, spec, run } = repo();
+  run('init', spec, 'none:demo', 'feat/demo');
+  const state = stateOf(spec);
+  state.version = 1;
+  state.flow = '9';
+  const tree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+  state.awaiting = { gate: '11', payload: {}, tree };
+  writeFileSync(join(spec, 'state.json'), JSON.stringify(state));
+  const out = run('status', spec, '--no-brief');
+  assert.match(out.stdout, /Commit/);
+  assert.match(out.stdout, /^Waiting at: 12$/m);
+});
+
+test('UAT findings survive a code review', () => {
+  const { spec, run } = repo();
+  run('init', spec, 'none:demo', 'feat/demo');
+  const feed = (args, json) =>
+    spawnSync('node', [SCRIPT, 'findings', spec, ...args], {
+      input: json,
+      encoding: 'utf8',
+    });
+  assert.equal(feed(['--uat'], '[{"id":"UAT-AC1","summary":"x"}]').status, 0);
+  assert.equal(feed([], '[{"id":"1","summary":"y"}]').status, 0);
+  const ids = () => stateOf(spec).codeReview.findings.map((f) => f.id);
+  assert.deepEqual(ids().sort(), ['1', 'UAT-AC1']);
+  assert.equal(feed(['--uat'], '[]').status, 0);
+  assert.deepEqual(ids(), ['1']);
+  assert.equal(stateOf(spec).codeReview.done, true);
 });
 
 test('round limit is 3', () => {
@@ -164,27 +196,103 @@ const STATE = {
   codeReview: { done: true, findings: [] },
 };
 
-test('after the commit, steps 7-9 resume as step 10', () => {
-  for (const flow of ['7', '8', '9']) {
-    const state = { ...STATE, flow };
-    assert.match(
-      nextAction(state, { ...FACTS, commitsAfterBase: true, dirty: true }),
-      /^finish the step 10 security fix/,
-    );
-    assert.equal(
-      nextAction(state, { ...FACTS, commitsAfterBase: true }),
-      'run step 10',
-    );
-  }
+test('open UAT findings resume at step 9', () => {
+  const state = {
+    ...STATE,
+    flow: '9',
+    codeReview: { done: true, findings: [{ id: 'UAT-AC2', status: 'open' }] },
+  };
   assert.equal(
-    nextAction({ ...STATE, flow: '9' }, FACTS),
-    'run step 9 (commit)',
+    nextAction(state, FACTS),
+    'fix UAT findings UAT-AC2, then code-review on the fix, step 8, then step 9',
+  );
+  assert.equal(nextAction({ ...STATE, flow: '9' }, FACTS), 'run step 9 (UAT)');
+});
+
+test('open UAT findings at the round limit ask the UAT gate; a pending one asks again', () => {
+  const state = {
+    ...STATE,
+    flow: '9',
+    rounds: { pre: 3, post: 0 },
+    codeReview: { done: true, findings: [{ id: 'UAT-AC1', status: 'open' }] },
+  };
+  assert.equal(nextAction(state, FACTS), 'ask the UAT gate');
+  assert.equal(
+    nextAction({ ...state, rounds: { pre: 2, post: 0 } }, FACTS),
+    'fix UAT findings UAT-AC1, then code-review on the fix, step 8, then step 9',
+  );
+  assert.equal(
+    nextAction({ ...state, awaiting: { gate: 'uat' } }, FACTS),
+    'ask again: uat',
   );
 });
 
-test('step 11 checks the PR', () => {
+test('at step 9, open code-review findings of a UAT fix come first', () => {
+  const state = {
+    ...STATE,
+    flow: '9',
+    codeReview: {
+      done: true,
+      findings: [
+        { id: 'UAT-AC1', status: 'open' },
+        { id: '2', status: 'open' },
+      ],
+    },
+  };
   assert.equal(
-    nextAction({ ...STATE, flow: '11' }, { ...FACTS, commitsAfterBase: true }),
-    'check the PR (gh pr view); if there is none, run step 11',
+    nextAction(state, FACTS),
+    'fix findings 2, then code-review on the fix',
+  );
+});
+
+test('open code-review findings at step 9 at the round limit stop', () => {
+  const state = {
+    ...STATE,
+    flow: '9',
+    rounds: { pre: 3, post: 0 },
+    codeReview: { done: true, findings: [{ id: '2', status: 'open' }] },
+  };
+  assert.equal(
+    nextAction(state, FACTS),
+    'stop: round limit reached; ask the user',
+  );
+});
+
+test('findings checks the UAT- prefix against --uat', () => {
+  const { spec, run } = repo();
+  run('init', spec, 'none:demo', 'feat/demo');
+  const feed = (args, json) =>
+    spawnSync('node', [SCRIPT, 'findings', spec, ...args], {
+      input: json,
+      encoding: 'utf8',
+    });
+  const before = stateOf(spec);
+  assert.notEqual(feed(['--uat'], '[{"id":"1","summary":"x"}]').status, 0);
+  assert.notEqual(feed([], '[{"id":"UAT-AC1","summary":"y"}]').status, 0);
+  assert.deepEqual(stateOf(spec), before);
+});
+
+test('after the commit, steps 7-10 resume as step 11', () => {
+  for (const flow of ['7', '8', '9', '10']) {
+    const state = { ...STATE, flow };
+    assert.match(
+      nextAction(state, { ...FACTS, commitsAfterBase: true, dirty: true }),
+      /^finish the step 11 security fix/,
+    );
+    assert.equal(
+      nextAction(state, { ...FACTS, commitsAfterBase: true }),
+      'run step 11',
+    );
+  }
+  assert.equal(
+    nextAction({ ...STATE, flow: '10' }, FACTS),
+    'run step 10 (commit)',
+  );
+});
+
+test('step 12 checks the PR', () => {
+  assert.equal(
+    nextAction({ ...STATE, flow: '12' }, { ...FACTS, commitsAfterBase: true }),
+    'check the PR (gh pr view); if there is none, run step 12',
   );
 });

@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: Draft a GitHub PR title and description for the current branch from the turbo-workflow PR template, using only facts from the diff, the spec files and the verify result. Use when the user asks for a PR description or wants to open a PR, and at step 11 of /turbo-workflow:work-ticket.
+description: Draft a GitHub PR title and description for the current branch from the turbo-workflow PR template, using only facts from the diff, the spec files and the verify result. Use when the user asks for a PR description or wants to open a PR, and at step 12 of /turbo-workflow:work-ticket.
 argument-hint: [base branch, default git.baseBranch]
 ---
 
@@ -18,7 +18,7 @@ Arguments: `$ARGUMENTS` — optionally a base branch (default `git.baseBranch`: 
 2. **Draft.** Dispatch the `turbo-workflow:pr-writer` subagent with the branch, base commit, PR target, spec dir (or "none"), the ticket line (or "none") and the template path `${CLAUDE_PLUGIN_ROOT}/templates/pr-description.md`.
 3. **Save.** Write the body it returns to `<spec dir>/pr-description.md`, or to `.superpowers/pr-description.md` when there is no spec dir. Both paths are gitignored. Keep the title for `gh pr create --title`.
 4. **Show.** Inside `/turbo-workflow:work-ticket`, do not show the draft. Otherwise show the title and the body.
-5. **Next.** Inside `/turbo-workflow:work-ticket`, go back to step 11 (push and `gh pr create --draft`). Otherwise ask with AskUserQuestion: A "Push and create the PR with this description" (Recommended), B "Keep the draft only". On A:
+5. **Next.** Inside `/turbo-workflow:work-ticket`, go back to step 12 (push and `gh pr create --draft`). Otherwise ask with AskUserQuestion: A "Push and create the PR with this description" (Recommended), B "Keep the draft only". On A:
    - `git push -u <git.remote> <branch>`, then `gh pr create --base <PR target> --head <branch> --title "<title>" --body-file <draft path>`;
    - report the PR URL.
 
