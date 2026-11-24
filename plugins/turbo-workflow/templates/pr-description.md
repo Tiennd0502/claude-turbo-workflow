@@ -61,17 +61,6 @@ Requirements shown as `PASS (screenshot, manual)`, `PASS (UAT)`, `PASS (plan che
 </details>
 -->
 
-## UAT sign-off
-
-<!-- From report.md's `## UAT`; delete this section when report.md has none. The status line, then one unticked checkbox per scenario with its result and assertion, then the three human checks. A human ticks them; nothing waits on them. Text only: no UAT screenshots. -->
-
-UAT: <!-- passed | failed | failed (AC<n> disputed: <reason>) | not run (<reason>) -->
-
-- [ ] <!-- S1 (AC1): PASS — <assertion> -->
-- [ ] Copy reads right
-- [ ] Layout looks right
-- [ ] The flow feels right
-
 ---
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
